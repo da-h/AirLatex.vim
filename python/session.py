@@ -161,7 +161,8 @@ class AirLatexProject:
             self.ws.write_message("5:::"+message_content)
         elif message_type == "cmd":
             cmd_id = next(self.command_counter)
-            self.ws.write_message("5:" + str(cmd_id) + "+::" + message_content)
+            msg = "5:" + str(cmd_id) + "+::" + message_content
+            self.ws.write_message(msg)
             self.requests[str(cmd_id)] = message
 
     def triggerRefresh(self):
@@ -170,9 +171,8 @@ class AirLatexProject:
 
 
     @gen.coroutine
-    def sendOps(self, ops, document, hash):
+    def sendOps(self, ops, document):
         source = document["_id"]
-        version = document["version"]
         self.send("cmd",{
             "name":"applyOtUpdate",
             "args": [
@@ -180,13 +180,13 @@ class AirLatexProject:
                 {
                     "doc": document["_id"],
                     "meta": {
-                        "hash": hash,
+                        # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
                         "source": source,
                         "ts": _genTimeStamp(),
                         "user_id": self.session.user_id
                     },
                     "op": ops,
-                    "v": version
+                    "v": document["version"]
                 }
             ]
         })
@@ -228,10 +228,8 @@ class AirLatexProject:
             self.ws = yield websocket_connect(self.url)
         except Exception as e:
             self.project["msg"] = "Connection Error."
-            self.triggerRefresh()
         else:
             self.project["msg"] = "Connected."
-            self.triggerRefresh()
             self.run()
 
     @gen.coroutine
@@ -252,8 +250,13 @@ class AirLatexProject:
                 except:
                     data = {"name":"error"}
 
+            # error occured
+            if code == "0":
+                self.project["msg"] = "The server closed the connection."
+                self.disconnect()
+
             # first message
-            if code == "1":
+            elif code == "1":
                 pass
 
             # keep alive
@@ -288,12 +291,6 @@ class AirLatexProject:
                 # update applied => apply update to buffer
                 elif data["name"] == "otUpdateApplied":
 
-                    # adapt version
-                    if 'v' in data:
-                        v = data['v']
-                        if v >= self.documents[data["doc"]]:
-                            self.document[data["doc"]] = v+1
-
                     # nothing to do?
                     if "args" not in data:
                         return
@@ -323,7 +320,6 @@ class AirLatexProject:
                     project_info = data[1]
                     self.project.update(project_info)
                     self.project["open"] = True
-                    self.triggerRefresh()
 
                 elif cmd == "joinDoc":
                     id = request["args"][0]
@@ -350,19 +346,24 @@ class AirLatexProject:
 
 
 # for debugging
-# if __name__ == "__main__":
-#     from mock import Mock
-#     import os
-#     DOMAIN = os.environ["DOMAIN"]
-#     sl = AirLatexSession(DOMAIN, None)
-#     sl.login()
-#     project = sl.projectList()[0]
-#     print(project)
-#     sl.connectProject(project)
-#     time.sleep(3)
-#     print(project)
-#     doc = project["rootFolder"][0]["docs"][0]
-#     project["handler"].joinDocument(doc)
-#     time.sleep(3)
-#     print("sending ops")
-#     project["handler"].sendOps([{'p': 0, 'd': '0abB'}], doc)
+if __name__ == "__main__":
+    import asyncio
+    from mock import Mock
+    import os
+    DOMAIN = os.environ["DOMAIN"]
+    async def main():
+        sl = AirLatexSession(DOMAIN, None)
+        sl.login()
+        project = sl.projectList()[0]
+        print(project)
+        sl.connectProject(project)
+        time.sleep(3)
+        print(project)
+        doc = project["rootFolder"][0]["docs"][0]
+        project["handler"].joinDocument(doc)
+        time.sleep(3)
+        print("sending ops")
+        project["handler"].sendOps([{'p': 0, 'd': '0abB'}], doc)
+        project["handler"].sendOps([{'p': 0, 'd': 'def'}], doc)
+
+    asyncio.run(main())

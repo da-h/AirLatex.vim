@@ -276,7 +276,7 @@ class DocumentBuffer:
 
         # Buffer Settings
         vim.command("syntax on")
-        # vim.command('setlocal noswapfile')
+        vim.command('setlocal noswapfile')
         vim.command('setlocal buftype=nofile')
         vim.command("set filetype="+self.getExt())
 
@@ -291,6 +291,7 @@ class DocumentBuffer:
         # vim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
         vim.command("au CursorMoved <buffer> call AirLatex_writeBuffer()")
         vim.command("au CursorMovedI <buffer> call AirLatex_writeBuffer()")
+        # vim.command("command! -buffer -nargs=0 W call AirLatex_writeBuffer()")
 
     def write(self, lines):
         def writeLines(buffer,lines):
@@ -320,7 +321,7 @@ class DocumentBuffer:
         # calculate diff
         old = "\n".join(self.saved_buffer)
         new = "\n".join(self.buffer)
-        S = SequenceMatcher(None, old, new).get_opcodes()
+        S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
         ops = []
         for op in S:
             if op[0] == "equal":
@@ -345,9 +346,15 @@ class DocumentBuffer:
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
-        self.project_handler.sendOps(ops, self.document, hash(new))
+        self.project_handler.sendOps(ops, self.document)
 
     def applyUpdate(self,ops):
+
+        # adapt version
+        if "v" in ops:
+            v = ops["v"]
+            if v > self.document["version"]:
+                self.document["version"] = v
 
         # do nothing if no op included
         if not 'op' in ops:
@@ -364,19 +371,21 @@ class DocumentBuffer:
                     if 'd' in op:
                         p = op['p']
                         s = op['d']
-                        self._remove(p,s)
+                        self._remove(self.buffer,p,s)
+                        self._remove(self.saved_buffer,p,s)
 
                     # add characters and newlines
                     if 'i' in op:
                         p = op['p']
                         s = op['i']
-                        self._insert(p,s)
+                        self._insert(self.buffer,p,s)
+                        self._insert(self.saved_buffer,p,s)
             finally:
                 self.buffer_mutex.release()
         vim.async_call(applyOps, self, ops)
 
     # inster string at given position
-    def _insert(self, start, string):
+    def _insert(self, buffer, start, string):
         p_linestart = 0
 
         # find start line
@@ -395,18 +404,18 @@ class DocumentBuffer:
         string[-1] += line[(start-p_linestart):]
 
         # include string at start position
-        self.buffer[line_i] = line[:(start-p_linestart)] + string[0]
+        buffer[line_i] = line[:(start-p_linestart)] + string[0]
 
         # append rest to next line
         if len(string) > 1:
-            self.buffer[line_i+1:line_i+1] = string[1:]
+            buffer[line_i+1:line_i+1] = string[1:]
 
     # remove len chars from pos
-    def _remove(self, start, string):
+    def _remove(self, buffer, start, string):
         p_linestart = 0
 
         # find start line
-        for line_i, line in enumerate(self.buffer):
+        for line_i, line in enumerate(buffer):
 
             # start is not yet there
             if start >= p_linestart+len(line)+1:
@@ -423,12 +432,12 @@ class DocumentBuffer:
 
         # add rest of last line to new string
         if len(string) == 1:
-            new_string += self.buffer[line_i+len(string)-1][(start-p_linestart)+len(string[-1]):]
+            new_string += buffer[line_i+len(string)-1][(start-p_linestart)+len(string[-1]):]
         else:
-            new_string += self.buffer[line_i+len(string)-1][len(string[-1]):]
+            new_string += buffer[line_i+len(string)-1][len(string[-1]):]
 
         # overwrite buffer
-        self.buffer[line_i:line_i+len(string)] = [new_string]
+        buffer[line_i:line_i+len(string)] = [new_string]
 
 
 
