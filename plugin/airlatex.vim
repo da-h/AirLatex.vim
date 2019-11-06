@@ -59,9 +59,6 @@ endfunction
 
 nmap <leader>a :call AirLatex()<cr>
 
-" TODO only for AirLatex sidebar
-au VimLeave * call AirLatex_close()
-
 " globals
 if !exists("g:airlatex_domain")
     let g:airlatex_domain="www.sharelatex.com"

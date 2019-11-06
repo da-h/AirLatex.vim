@@ -99,7 +99,8 @@ class SideBar:
         vim.command("nmap <silent> <buffer> <down> <down> <bar> :call AirLatex_project_update() <enter> <bar> <right>")
         vim.command("nmap <silent> <buffer> j <down> <bar> :call AirLatex_project_update() <enter> <bar> <right>")
         vim.command("nmap <silent> <enter> :call AirLatex_project_enter() <enter>")
-        # vim.command("autocmd VimLeavePre * :call AirLatex_close()")
+        vim.command("autocmd VimLeavePre <buffer> :call AirLatex_close()")
+
 
 
     def listProjects(self, overwrite=False):
@@ -464,6 +465,7 @@ elif cmd=="d":
 #     plugin.updateProject()
 elif cmd=="close":
     sidebar.cleanup()
+    sidebar = None
 elif cmd=="writeBuffer":
     buffer = vim.current.buffer
     if buffer in allBuffers:
