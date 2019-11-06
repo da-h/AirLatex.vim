@@ -57,7 +57,7 @@ function AirLatex_writeBuffer()
 endfunction
 
 
-nmap <leader>a :call AirLatex()<cr>
+command! -nargs=0 AirLatex :call AirLatex()
 
 " globals
 if !exists("g:airlatex_domain")
