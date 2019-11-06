@@ -157,7 +157,7 @@ class AirLatexProject:
     def run(self):
         while True:
             msg = yield self.ws.read_message()
-            msg = msg.encode("latin1").decode("utf8")
+            msg = msg
             if msg is None:
                 self.project["msg"] = "Connection Closed."
                 self.triggerRefresh()
@@ -246,7 +246,7 @@ class AirLatexProject:
                 elif cmd == "joinDoc":
                     id = request["args"][0]
                     self.documents[id]["version"] = data[2]
-                    self.documents[id]["buffer"].write(data[1])
+                    self.documents[id]["buffer"].write([d.encode("latin1").decode("utf8") for d in data[1]])
 
                 elif cmd == "applyOtUpdate":
                     id = request["args"][0]
