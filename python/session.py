@@ -147,7 +147,6 @@ class AirLatexProject:
         self.cursors = {}
         self.documents = {}
         self.ops_await_accept = False
-        self.ops_buffer = []
 
         self.ioloop.start()
 
@@ -177,10 +176,10 @@ class AirLatexProject:
     def sendOps(self, document, ops=[]):
 
         # append new ops to buffer
-        self.ops_buffer += ops
+        document["ops_buffer"] += ops
 
         # skip if nothing to do
-        if len(self.ops_buffer) == 0:
+        if len(document["ops_buffer"]) == 0:
             return
 
         # wait if awaiting server response
@@ -188,7 +187,7 @@ class AirLatexProject:
             return
 
         # clean buffer for next call
-        ops_buffer, self.ops_buffer, self.ops_await_accept = self.ops_buffer, [], True
+        ops_buffer, document["ops_buffer"], self.ops_await_accept = document["ops_buffer"], [], True
 
         # actually send operations
         source = document["_id"]
@@ -221,6 +220,9 @@ class AirLatexProject:
 
         # register document in project_handler
         self.documents[doc["_id"]] = doc
+
+        # register document op-buffer
+        self.documents[doc["_id"]]["ops_buffer"] = []
 
         # regester for document-watching
         self.send("cmd",{
@@ -346,9 +348,12 @@ class AirLatexProject:
                     self.documents[id]["buffer"].write(data[1])
 
                 elif cmd == "applyOtUpdate":
+                    id = request["args"][0]
+
+                    # increase version as update was accepted
+                    self.documents[id]["version"] += 1
 
                     # flush next
-                    id = request["args"][0]
                     self.ops_await_accept = False
                     self.sendOps(self.documents[id])
 

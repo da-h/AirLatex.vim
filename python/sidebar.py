@@ -292,7 +292,7 @@ class DocumentBuffer:
         # vim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
         vim.command("au CursorMoved <buffer> call AirLatex_writeBuffer()")
         vim.command("au CursorMovedI <buffer> call AirLatex_writeBuffer()")
-        # vim.command("command! -buffer -nargs=0 W call AirLatex_writeBuffer()")
+        vim.command("command! -buffer -nargs=0 W call AirLatex_writeBuffer()")
 
     def write(self, lines):
         def writeLines(buffer,lines):
