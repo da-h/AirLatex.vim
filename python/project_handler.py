@@ -157,6 +157,7 @@ class AirLatexProject:
     def run(self):
         while True:
             msg = yield self.ws.read_message()
+            msg = msg.encode("latin1").decode("utf8")
             if msg is None:
                 self.project["msg"] = "Connection Closed."
                 self.triggerRefresh()
