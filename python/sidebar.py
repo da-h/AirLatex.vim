@@ -347,7 +347,7 @@ class DocumentBuffer:
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
-        self.project_handler.sendOps(ops, self.document)
+        self.project_handler.sendOps(self.document, ops)
 
     def applyUpdate(self,ops):
 

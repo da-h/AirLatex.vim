@@ -146,6 +146,9 @@ class AirLatexProject:
         self.requests = {}
         self.cursors = {}
         self.documents = {}
+        self.ops_await_accept = False
+        self.ops_buffer = []
+
         self.ioloop.start()
 
     def cleanup(self):
@@ -171,7 +174,23 @@ class AirLatexProject:
 
 
     @gen.coroutine
-    def sendOps(self, ops, document):
+    def sendOps(self, document, ops=[]):
+
+        # append new ops to buffer
+        self.ops_buffer += ops
+
+        # skip if nothing to do
+        if len(self.ops_buffer) == 0:
+            return
+
+        # wait if awaiting server response
+        if self.ops_await_accept:
+            return
+
+        # clean buffer for next call
+        ops_buffer, self.ops_buffer, self.ops_await_accept = self.ops_buffer, [], True
+
+        # actually send operations
         source = document["_id"]
         self.send("cmd",{
             "name":"applyOtUpdate",
@@ -185,7 +204,7 @@ class AirLatexProject:
                         "ts": _genTimeStamp(),
                         "user_id": self.session.user_id
                     },
-                    "op": ops,
+                    "op": ops_buffer,
                     "v": document["version"]
                 }
             ]
@@ -327,7 +346,15 @@ class AirLatexProject:
                     self.documents[id]["buffer"].write(data[1])
 
                 elif cmd == "applyOtUpdate":
+
+                    # flush next
+                    id = request["args"][0]
+                    self.ops_await_accept = False
+                    self.sendOps(self.documents[id])
+
+                    # remove awaiting request
                     del self.requests[answer_id]
+
 
                 else:
                     # self.project["msg"] = "Data not known:"+str(msg)
@@ -355,15 +382,16 @@ if __name__ == "__main__":
         sl = AirLatexSession(DOMAIN, None)
         sl.login()
         project = sl.projectList()[0]
-        print(project)
+        print(">>>>",project)
         sl.connectProject(project)
         time.sleep(3)
-        print(project)
+        print(">>>",project)
         doc = project["rootFolder"][0]["docs"][0]
         project["handler"].joinDocument(doc)
         time.sleep(3)
-        print("sending ops")
-        project["handler"].sendOps([{'p': 0, 'd': '0abB'}], doc)
-        project["handler"].sendOps([{'p': 0, 'd': 'def'}], doc)
+        print(">>>> sending ops")
+        project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
+        project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
+        project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
 
     asyncio.run(main())
