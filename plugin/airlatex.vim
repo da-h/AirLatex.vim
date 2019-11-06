@@ -61,7 +61,7 @@ command! -nargs=0 AirLatex :call AirLatex()
 
 " globals
 if !exists("g:airlatex_domain")
-    let g:airlatex_domain="www.sharelatex.com"
+    let g:airlatex_domain="www.overleaf.com"
 endif
 
 " vim: set sw=4 sts=4 et fdm=marker:
