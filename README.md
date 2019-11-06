@@ -20,11 +20,12 @@ Install
     let g:airlatex_domain="www.sharelatex.com"
     ```
 3. For the login, this plugin uses [`browser_cookie3](https://github.com/borisbabic/browser_cookie3). **Please use Firefox or Chrome to login.** Browser_cookie3 will find the right cookie for the server. :)
-4. Open AirLatex in Vim, by using `<leader>a` or by using the command
-    ```
-    :call AirLatex()
-    ```
+4. Open AirLatex in Vim with `:AirLatex`
 
+Feel free to map AirLatex to a binding of your liking, e.g.:
+```
+nmap <leader>a :AirLatex<CR>
+```
 
 Credits
 -------
