@@ -289,6 +289,10 @@ class AirLatexProject:
                         self.cursors[cursor["client_id"]] = cursor
                     self.updateRemoteCursor(data[1])
 
+                elif cmd == "clientTracking.updatePosition":
+                    # server accepted the change
+                    del self.requests[answer_id]
+
                 else:
                     # self.project["msg"] = "Data not known:"+str(msg)
                     self.project["msg"] = "no:"+str(request)
