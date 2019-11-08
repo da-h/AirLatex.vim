@@ -57,7 +57,16 @@ class DocumentBuffer:
         # self.serverBuffer = "\n".join(lines)
         vim.async_call(writeLines,self.buffer,lines)
 
+    def updateRemoteCursor(self, cursor):
+        def updateRemoteCursor(cursor):
+            vim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
+            print(cursor)
+        vim.async_call(updateRemoteCursor, cursor)
+
     def writeBuffer(self):
+
+        # update CursorPosition
+        self.project_handler.updateCursor(self.document,vim.current.window.cursor)
 
         # skip if not yet initialized
         if self.saved_buffer is None:

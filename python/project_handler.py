@@ -6,7 +6,7 @@ import re
 import time
 from itertools import count
 import json
-from mock import Mock
+# from mock import Mock # FOR DEBUG MODE
 
 
 # Generate a timstamp with a length of 13 numbers
@@ -71,6 +71,22 @@ class AirLatexProject:
         if self.sidebar:
             self.sidebar.triggerRefresh()
 
+    def updateRemoteCursor(self, cursors):
+        for cursor in cursors:
+            if "row" in cursor and "column" in cursor and "doc_id" in cursor and cursor["doc_id"] in self.documents:
+                self.documents[cursor["doc_id"]].updateRemoteCursor(cursor)
+
+    @gen.coroutine
+    def updateCursor(self,doc, pos):
+        self.send("cmd",{
+            "name":"clientTracking.updatePosition",
+            "args": [{
+                "doc_id": doc["_id"],
+                "row": pos[0]-1,
+                "column": pos[1]
+            }]
+        })
+
 
     @gen.coroutine
     def sendOps(self, document, ops=[]):
@@ -113,8 +129,8 @@ class AirLatexProject:
     def joinDocument(self, buffer):
 
         # register buffer in document
-        # doc = buffer # FOR DEBUGGING
-        # doc["buffer"] = Mock() # FOR DEBUGGING
+        # doc = buffer # FOR DEBUG MODE
+        # doc["buffer"] = Mock() # FOR DEBUG MODE
         doc = buffer.document
         doc["buffer"] = buffer
 
@@ -194,6 +210,7 @@ class AirLatexProject:
                 if data["name"] == "connectionAccepted":
                     self.project["msg"] = "Connection Active."
                     self.send("cmd",{"name":"joinProject","args":[{"project_id":self.project["id"]}]})
+                    self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
 
                 # broadcastDocMeta => we ignore it at first
                 elif data["name"] == "broadcastDocMeta":
@@ -202,13 +219,15 @@ class AirLatexProject:
                 # client Connected => delete from cursor list
                 elif data["name"] == "clientTracking.clientUpdated":
                     for cursor in data["args"]:
-                        self.cursors[cursor["id"]] = cursor
+                        self.cursors[cursor["id"]].update(cursor)
+                    self.updateRemoteCursor(data["args"])
 
                 # client Disconnected => delete from cursor list
                 elif data["name"] == "clientTracking.clientDisconnected":
                     for id in data["args"]:
                         if id in self.cursors:
                             del self.cursors[id]
+                    self.updateRemoteCursor(data["args"])
 
                 # update applied => apply update to buffer
                 elif data["name"] == "otUpdateApplied":
@@ -261,6 +280,14 @@ class AirLatexProject:
                     # remove awaiting request
                     del self.requests[answer_id]
 
+                elif cmd == "clientTracking.getConnectedUsers":
+                    for cursor in data[1]:
+                        if "cursorData" in cursor:
+                            cursorData = cursor["cursorData"]
+                            del cursor["cursorData"]
+                            cursor.update(cursorData)
+                        self.cursors[cursor["client_id"]] = cursor
+                    self.updateRemoteCursor(data[1])
 
                 else:
                     # self.project["msg"] = "Data not known:"+str(msg)

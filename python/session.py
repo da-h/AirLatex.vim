@@ -9,7 +9,6 @@ from python.project_handler import AirLatexProject, _genTimeStamp
 # from project_handler import AirLatexProject, _genTimeStamp # DEBUG
 
 cj = browser_cookie3.load()
-DEBUG = False
 
 
 ### All web page related airlatex stuff
@@ -116,13 +115,13 @@ if __name__ == "__main__":
         print(">>>>",project)
         sl.connectProject(project)
         time.sleep(3)
-        print(">>>",project)
+        # print(">>>",project)
         doc = project["rootFolder"][0]["docs"][0]
         project["handler"].joinDocument(doc)
-        time.sleep(3)
+        time.sleep(6)
         print(">>>> sending ops")
-        project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
-        project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
-        project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
+        # project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
+        # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
+        # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
 
     asyncio.run(main())
