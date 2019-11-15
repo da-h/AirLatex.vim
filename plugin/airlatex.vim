@@ -24,44 +24,6 @@ let s:pyfile = s:airlatex_home. s:psep. 'python'. s:psep. 'sidebar.py'
 let g:AirLatexArrowClosed="▸"
 let g:AirLatexArrowOpen="▾"
 let g:AirLatexWinPos="left"
-let g:AirLatexWinSize=31
-
-function! AirLatex()
-	let g:cmd="start"
-    execute 'py3file' s:pyfile
-endfunction
-
-function AirLatex_project_update()
-	let g:cmd="update"
-    execute 'py3file' s:pyfile
-endfunction
-
-function AirLatex_project_enter()
-	let g:cmd="enter"
-    execute 'py3file' s:pyfile
-endfunction
-
-function AirLatex_update_pos()
-	let g:cmd="updatePos"
-    execute 'py3file' s:pyfile
-endfunction
-
-function AirLatex_close()
-	let g:cmd="close"
-    execute 'py3file' s:pyfile
-endfunction
-
-function AirLatex_writeBuffer()
-	let g:cmd="writeBuffer"
-    execute 'py3file' s:pyfile
-endfunction
-
-
-command! -nargs=0 AirLatex :call AirLatex()
-
-" globals
-if !exists("g:airlatex_domain")
-    let g:airlatex_domain="www.overleaf.com"
-endif
+let g:AirLatexWinSize=41
 
 " vim: set sw=4 sts=4 et fdm=marker:

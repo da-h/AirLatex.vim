@@ -1,4 +1,4 @@
-import vim
+import pynvim
 from difflib import SequenceMatcher
 from threading import Lock
 
@@ -7,8 +7,9 @@ if "allBuffers" not in globals():
 class DocumentBuffer:
     allBuffers = allBuffers
 
-    def __init__(self, path):
+    def __init__(self, path, nvim):
         self.path = path
+        self.nvim = nvim
         self.project_handler = path[0]["handler"]
         self.document = path[-1]
         self.initDocumentBuffer()
@@ -23,30 +24,30 @@ class DocumentBuffer:
     def initDocumentBuffer(self):
 
         # Creating new Buffer
-        vim.command('wincmd w')
-        vim.command('enew')
-        vim.command('file '+self.getName())
-        self.buffer = vim.current.buffer
+        self.nvim.command('wincmd w')
+        self.nvim.command('enew')
+        self.nvim.command('file '+self.getName())
+        self.buffer = self.nvim.current.buffer
         DocumentBuffer.allBuffers[self.buffer] = self
 
         # Buffer Settings
-        vim.command("syntax on")
-        vim.command('setlocal noswapfile')
-        vim.command('setlocal buftype=nofile')
-        vim.command("set filetype="+self.getExt())
+        self.nvim.command("syntax on")
+        self.nvim.command('setlocal noswapfile')
+        self.nvim.command('setlocal buftype=nofile')
+        self.nvim.command("set filetype="+self.getExt())
 
         # self.applyString(serverBuffer)
 
         # ??? Returning normal function to these buttons
-        # vim.command("nmap <silent> <up> <up>")
-        # vim.command("nmap <silent> <down> <down>")
-        # vim.command("nmap <silent> <enter> <enter>")
-        # vim.command("set updatetime=500")
-        # vim.command("autocmd CursorMoved,CursorMovedI * :call AirLatex_update_pos()")
-        # vim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
-        vim.command("au CursorMoved <buffer> call AirLatex_writeBuffer()")
-        vim.command("au CursorMovedI <buffer> call AirLatex_writeBuffer()")
-        vim.command("command! -buffer -nargs=0 W call AirLatex_writeBuffer()")
+        # self.nvim.command("nmap <silent> <up> <up>")
+        # self.nvim.command("nmap <silent> <down> <down>")
+        # self.nvim.command("nmap <silent> <enter> <enter>")
+        # self.nvim.command("set updatetime=500")
+        # self.nvim.command("autocmd CursorMoved,CursorMovedI * :call AirLatex_update_pos()")
+        # self.nvim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
+        self.nvim.command("au CursorMoved <buffer> call AirLatex_WriteBuffer()")
+        self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
+        self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
     def write(self, lines):
         def writeLines(buffer,lines):
@@ -55,18 +56,19 @@ class DocumentBuffer:
                 buffer.append(l)
             self.saved_buffer = buffer[:]
         # self.serverBuffer = "\n".join(lines)
-        vim.async_call(writeLines,self.buffer,lines)
+        self.nvim.async_call(writeLines,self.buffer,lines)
+        # self.nvim.command("call AirLatex_SidebarRefresh()")
 
     def updateRemoteCursor(self, cursor):
-        def updateRemoteCursor(cursor):
-            vim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
-            print(cursor)
-        vim.async_call(updateRemoteCursor, cursor)
+        pass
+        # def updateRemoteCursor(cursor, nvim):
+        #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
+        # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)
 
     def writeBuffer(self):
 
         # update CursorPosition
-        self.project_handler.updateCursor(self.document,vim.current.window.cursor)
+        self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor)
 
         # skip if not yet initialized
         if self.saved_buffer is None:
@@ -146,7 +148,7 @@ class DocumentBuffer:
                         self._insert(self.saved_buffer,p,s)
             finally:
                 self.buffer_mutex.release()
-        vim.async_call(applyOps, self, ops)
+        self.nvim.async_call(applyOps, self, ops)
 
     # inster string at given position
     def _insert(self, buffer, start, string):
