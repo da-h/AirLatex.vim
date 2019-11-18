@@ -9,7 +9,7 @@ from airlatex.util import _genTimeStamp
 # from util import _genTimeStamp # FOR DEBUG MODE
 # from mock import Mock # FOR DEBUG MODE
 import time
-from threading import Thread, currentThread
+from threading import Thread, currentThread, Lock
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -37,6 +37,7 @@ class AirLatexProject:
         self.cursors = {}
         self.documents = {}
         self.ops_await_accept = False
+        self.ops_mutex = Lock()
 
         PeriodicCallback(self.keep_alive, 20000).start()
         self.connect()
@@ -83,39 +84,41 @@ class AirLatexProject:
     @gen.coroutine
     def sendOps(self, document, ops=[]):
 
-        # append new ops to buffer
-        document["ops_buffer"] += ops
+        with self.ops_mutex:
 
-        # skip if nothing to do
-        if len(document["ops_buffer"]) == 0:
-            return
+            # append new ops to buffer
+            document["ops_buffer"] += ops
 
-        # wait if awaiting server response
-        if self.ops_await_accept:
-            return
+            # skip if nothing to do
+            if len(document["ops_buffer"]) == 0:
+                return
 
-        # clean buffer for next call
-        ops_buffer, document["ops_buffer"], self.ops_await_accept = document["ops_buffer"], [], True
+            # wait if awaiting server response
+            if self.ops_await_accept:
+                return
 
-        # actually send operations
-        source = document["_id"]
-        self.send("cmd",{
-            "name":"applyOtUpdate",
-            "args": [
-                document["_id"],
-                {
-                    "doc": document["_id"],
-                    "meta": {
-                        # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
-                        "source": source,
-                        "ts": _genTimeStamp(),
-                        "user_id": self.used_id
-                    },
-                    "op": ops_buffer,
-                    "v": document["version"]
-                }
-            ]
-        })
+            # clean buffer for next call
+            ops_buffer, document["ops_buffer"], self.ops_await_accept = document["ops_buffer"], [], True
+
+            # actually send operations
+            source = document["_id"]
+            self.send("cmd",{
+                "name":"applyOtUpdate",
+                "args": [
+                    document["_id"],
+                    {
+                        "doc": document["_id"],
+                        "meta": {
+                            # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
+                            "source": source,
+                            "ts": _genTimeStamp(),
+                            "user_id": self.used_id
+                        },
+                        "op": ops_buffer,
+                        "v": document["version"]
+                    }
+                ]
+            })
 
     @gen.coroutine
     def joinDocument(self, buffer):

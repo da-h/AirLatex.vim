@@ -14,6 +14,7 @@ class DocumentBuffer:
         self.document = path[-1]
         self.initDocumentBuffer()
         self.buffer_mutex = Lock()
+        self.ops_mutex = Lock()
         self.saved_buffer = None
 
     def getName(self):
@@ -74,45 +75,47 @@ class DocumentBuffer:
         if self.saved_buffer is None:
             return
 
-        # nothing to do
-        if len(self.saved_buffer) == len(self.buffer):
-            skip = True
-            for ol,nl in zip(self.saved_buffer, self.buffer):
-                if hash(ol) != hash(nl):
-                    skip = False
-                    break
-            if skip:
+        with self.ops_mutex:
+
+            # nothing to do
+            if len(self.saved_buffer) == len(self.buffer):
+                skip = True
+                for ol,nl in zip(self.saved_buffer, self.buffer):
+                    if hash(ol) != hash(nl):
+                        skip = False
+                        break
+                if skip:
+                    return
+
+            # calculate diff
+            old = "\n".join(self.saved_buffer)
+            new = "\n".join(self.buffer)
+            S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+            ops = []
+            for op in S:
+                if op[0] == "equal":
+                    continue
+
+                elif op[0] == "replace":
+                    ops.append({"p": op[1], "i": new[op[3]:op[4]]})
+                    ops.append({"p": op[1], "d": old[op[1]:op[2]]})
+
+                elif op[0] == "insert":
+                    ops.append({"p": op[1], "i": new[op[3]:op[4]]})
+
+                elif op[0] == "delete":
+                    ops.append({"p": op[1], "d": old[op[1]:op[2]]})
+
+            # nothing to do
+            if len(ops) == 0:
                 return
 
-        # calculate diff
-        old = "\n".join(self.saved_buffer)
-        new = "\n".join(self.buffer)
-        S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-        ops = []
-        for op in S:
-            if op[0] == "equal":
-                continue
+            # reverse, as last op should be applied first
+            ops.reverse()
 
-            elif op[0] == "replace":
-                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
-                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
-
-            elif op[0] == "insert":
-                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
-
-            elif op[0] == "delete":
-                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
-
-        # nothing to do
-        if len(ops) == 0:
-            return
-
-        # reverse, as last op should be applied first
-        ops.reverse()
-
-        # update saved buffer & send command
-        self.saved_buffer = self.buffer[:]
-        self.project_handler.sendOps(self.document, ops)
+            # update saved buffer & send command
+            self.saved_buffer = self.buffer[:]
+            self.project_handler.sendOps(self.document, ops)
 
     def applyUpdate(self,ops):
 
