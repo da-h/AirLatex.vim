@@ -25,7 +25,6 @@ class SideBar:
         self.buffer_write_i = 0
         self.buffer_mutex = Lock()
         self.cursorPos = []
-        self.i = 0
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
@@ -128,10 +127,9 @@ class SideBar:
             if not overwrite or True:
                 self.buffer_write_i = 0
                 self.bufferappend("  ")
-                self.bufferappend(" AirLatex"+str(self.i))
+                self.bufferappend(" AirLatex")
                 self.bufferappend(" ========")
                 self.bufferappend("  ")
-                self.i += 1
             else:
                 self.buffer_write_i = 4
 
