@@ -2,7 +2,6 @@ import pynvim
 import browser_cookie3
 import requests
 import json
-from bs4 import BeautifulSoup
 import time
 from threading import Thread, currentThread
 from queue import Queue
@@ -83,15 +82,17 @@ class AirLatexSession:
             thread = Thread(target=loading, args=(self,nvim), daemon=True)
             thread.start()
 
-            projectPage = self.httpHandler.get(self.url + "/project")
-            projectSoup = BeautifulSoup(projectPage.text, features='lxml')
-            data = projectSoup.findAll("script",attrs={'id':'data'})
+            projectPage = self.httpHandler.get(self.url + "/project").text
             thread.do_run = False
-            if len(data) == 0:
+            pos_script_1  = projectPage.find("<script id=\"data\"")
+            pos_script_2 = projectPage.find(">", pos_script_1 + 20)
+            pos_script_close = projectPage.find("</script", pos_script_2 + 1)
+            if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
                 self.updateStatus(nvim, "Offline. Please Login.")
                 return []
-            data = json.loads(data[0].text)
-            self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage.text)[1]
+            data = projectPage[pos_script_2+1:pos_script_close]
+            data = json.loads(data)
+            self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage)[1]
             self.updateStatus(nvim, "Online")
 
             self.cached_projectList = data["projects"]

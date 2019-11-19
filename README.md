@@ -9,7 +9,7 @@ Install
 =======
 1. Install the requirements. (python3)
     ```
-    pip3 install browser_cookie3 BeautifulSoup4 tornado
+    pip3 install browser_cookie3 tornado
     ```
 2. Install the Vim Plugin itself
     Using **Vim Plug**:
