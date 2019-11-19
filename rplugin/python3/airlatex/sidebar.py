@@ -252,17 +252,6 @@ class SideBar:
 
         # is file
         elif self.cursorPos[-1]["type"] == "file":
-            # def loading(self, nvim):
-            #     i = 0
-            #     t = currentThread()
-            #     while getattr(t, "do_run", True):
-            #         s = " .." if i%3 == 0 else ". ." if i%3 == 1 else ".. "
-            #         self.updateStatus(nvim, s+" Loading "+s)
-            #         i += 1
-            #         time.sleep(0.1)
-            # thread = Thread(target=loading, args=(self,nvim), daemon=True)
-            # thread.start()
-
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
             self.cursorPos[0]["handler"].joinDocument(documentbuffer)
 

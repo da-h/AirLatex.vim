@@ -62,12 +62,16 @@ class AirLatexProject:
             self.requests[str(cmd_id)] = message
 
     def sidebarMsg(self, msg):
-        self.msg_queue.put(msg)
+        self.msg_queue.put(("msg",None,msg))
+
+    def bufferDo(self, doc_id, command, data):
+        if doc_id in self.documents:
+            self.msg_queue.put((command, self.documents[doc_id], data))
 
     def updateRemoteCursor(self, cursors):
         for cursor in cursors:
-            if "row" in cursor and "column" in cursor and "doc_id" in cursor and cursor["doc_id"] in self.documents:
-                self.documents[cursor["doc_id"]]["buffer"].updateRemoteCursor(cursor)
+            if "row" in cursor and "column" in cursor and "doc_id" in cursor:
+                self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
     @gen.coroutine
     def updateCursor(self,doc, pos):
@@ -232,7 +236,7 @@ class AirLatexProject:
 
                         # apply update to buffer
                         for op in data["args"]:
-                            self.documents[op["doc"]]["buffer"].applyUpdate(op)
+                            self.bufferDo(op["doc"], "applyUpdate", op)
 
                     # error occured
                     elif data["name"] == "otUpdateError":
@@ -259,7 +263,7 @@ class AirLatexProject:
                     elif cmd == "joinDoc":
                         id = request["args"][0]
                         self.documents[id]["version"] = data[2]
-                        self.documents[id]["buffer"].write([d.encode("latin1").decode("utf8") for d in data[1]])
+                        self.bufferDo(id, "write", [d.encode("latin1").decode("utf8") for d in data[1]])
 
                     elif cmd == "applyOtUpdate":
                         id = request["args"][0]

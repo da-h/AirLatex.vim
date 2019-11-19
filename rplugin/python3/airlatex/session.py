@@ -105,15 +105,30 @@ class AirLatexSession:
 
             # This is needed because IOLoop and pynvim interfere!
             msg_queue = Queue()
-            msg_queue.put("Connecting Project")
+            msg_queue.put(("msg",None,"Connecting Project"))
             project["msg_queue"] = msg_queue
             def flush_queue(queue, project, servername):
                 t = currentThread()
                 nvim = pynvim.attach("socket",path=servername)
                 while getattr(t, "do_run", True):
-                    project["msg"] = queue.get()
-                    nvim.command("call AirLatex_SidebarRefresh()")
-                    time.sleep(0.1)
+                    cmd, doc, data = queue.get()
+                    try:
+                        if cmd == "msg":
+                            project["msg"] = data
+                            nvim.command("call AirLatex_SidebarRefresh()")
+                            time.sleep(0.1)
+                            continue
+
+                        buf = doc["buffer"]
+                        if cmd == "applyUpdate":
+                            buf.applyUpdate(data)
+                        elif cmd == "write":
+                            buf.write(data)
+                        elif cmd == "updateRemoteCursor":
+                            buf.updateRemoteCursor(data)
+                    except Exception as e:
+                        project["msg"] = "Exception:"+str(e)
+                        nvim.command("call AirLatex_SidebarRefresh()")
             msg_thread = Thread(target=flush_queue, args=(msg_queue, project, self.servername), daemon=True)
             msg_thread.start()
             self.projectThreads.append(msg_thread)
