@@ -157,10 +157,12 @@ class AirLatexProject:
         self.ioloop.stop()
         self.sidebarMsg("Disconnected.")
         self.project["open"] = False
+        self.project["connected"] = False
 
     @gen.coroutine
     def connect(self):
         try:
+            self.project["connected"] = True
             self.ws = yield websocket_connect(self.url)
         except Exception as e:
             self.sidebarMsg("Websocket Connection Error: "+str(e))

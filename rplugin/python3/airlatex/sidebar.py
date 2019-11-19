@@ -149,8 +149,9 @@ class SideBar:
                     if self.cursorAt([project]):
                         if "open" in project and project["open"]:
                             self.bufferappend("   -----------------")
-                        if "msg" in project:
-                            self.bufferappend("   msg: "+project['msg'])
+                    if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project])):
+                        self.bufferappend("   msg: "+project['msg'])
+                    if self.cursorAt([project]):
                         self.bufferappend("   source: "+project['source'])
                         self.bufferappend("   owner: "+project['owner']['first_name']+" "+project['owner']['last_name'])
                         self.bufferappend("   last change: "+project['lastUpdated'])
