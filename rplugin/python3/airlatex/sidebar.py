@@ -41,7 +41,8 @@ class SideBar:
     @catchException
     def cleanup(self):
         # self.refresh_thread.do_run = False
-        self.airlatex.session.cleanup(self.nvim)
+        if self.airlatex.session:
+            self.airlatex.session.cleanup(self.nvim)
 
 
     # ----------- #
@@ -98,6 +99,7 @@ class SideBar:
 
     @catchException
     def vimCursorSet(self,row,col):
+        return
         if self.buffer == self.nvim.current.window.buffer:
             window = self.nvim.current.window
             window.cursor = (row,col)
