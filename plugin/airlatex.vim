@@ -26,4 +26,11 @@ let g:AirLatexArrowOpen="▾"
 let g:AirLatexWinPos="left"
 let g:AirLatexWinSize=41
 
+if !exists("g:AirLatexLogLevel")
+    let g:AirLatexLogLevel="NOTSET"
+endif
+if !exists("g:AirLatexLogFile")
+    let g:AirLatexLogFile="AirLatex.log"
+endif
+
 " vim: set sw=4 sts=4 et fdm=marker:

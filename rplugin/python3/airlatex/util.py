@@ -9,4 +9,33 @@ def _genTimeStamp():
         t += "0"
     return t
 
+# get logging
+import logging
+logging_settings={
+    "level": "NOTSET",
+    "file": "AirLatex.log"
+}
+
+def getLogger(name):
+    log = logging.getLogger(name)
+
+    # user settings
+    level=logging_settings["level"]
+    file=logging_settings["file"]
+
+    if level != "NOTSET":
+
+        # formatter
+        f = logging.Formatter('[%(levelname)s] %(name)s: (%(threadName)-10s) %(message)s')
+
+        # handler
+        h = logging.FileHandler(file)
+        h.setFormatter(f)
+
+        # logger settings
+        log.addHandler(h)
+        log.setLevel(getattr(logging,level))
+
+    return log
+
 

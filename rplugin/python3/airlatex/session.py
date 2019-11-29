@@ -7,7 +7,7 @@ from threading import Thread, currentThread
 from queue import Queue
 import re
 from airlatex.project_handler import AirLatexProject
-from airlatex.util import _genTimeStamp
+from airlatex.util import _genTimeStamp, getLogger
 # from project_handler import AirLatexProject # FOR DEBUG MODE
 # from util import _genTimeStamp # FOR DEBUG MODE
 
@@ -20,7 +20,7 @@ def catchException(fn):
         try:
             return fn(self, nvim, *args, **kwargs)
         except Exception as e:
-            # nvim.err_write(traceback.format_exc(e)+"\n")
+            self.log.error(str(e))
             nvim.err_write(str(e)+"\n")
             raise e
     return wrapped
@@ -38,9 +38,11 @@ class AirLatexSession:
         self.cached_projectList = []
         self.projectThreads = []
         self.status = ""
+        self.log = getLogger(__name__)
 
     @catchException
     def cleanup(self, nvim):
+        self.log.debug("cleanup()")
         for p in self.cached_projectList:
             if "handler" in p:
                 p["handler"]
@@ -49,6 +51,7 @@ class AirLatexSession:
 
     @catchException
     def login(self, nvim):
+        self.log.debug("login()")
         if not self.authenticated:
             self.updateStatus(nvim, "Connecting")
             # check if cookie found by testing if projects redirects to login page
@@ -69,6 +72,7 @@ class AirLatexSession:
 
     @catchException
     def updateProjectList(self, nvim):
+        self.log.debug("updateProjectList()")
         if self.authenticated:
 
             def loading(self, nvim):
@@ -115,12 +119,14 @@ class AirLatexSession:
                     cmd, doc, data = queue.get()
                     try:
                         if cmd == "msg":
+                            self.log.debug("msg_queue:"+data)
                             project["msg"] = data
                             nvim.command("call AirLatex_SidebarRefresh()")
                             time.sleep(0.1)
                             continue
 
                         buf = doc["buffer"]
+                        self.log.debug("cmd="+cmd)
                         if cmd == "applyUpdate":
                             buf.applyUpdate(data)
                         elif cmd == "write":
@@ -128,6 +134,7 @@ class AirLatexSession:
                         elif cmd == "updateRemoteCursor":
                             buf.updateRemoteCursor(data)
                     except Exception as e:
+                        self.log.error("Exception"+str(e))
                         project["msg"] = "Exception:"+str(e)
                         nvim.command("call AirLatex_SidebarRefresh()")
             msg_thread = Thread(target=flush_queue, args=(msg_queue, project, self.servername), daemon=True)
@@ -137,12 +144,10 @@ class AirLatexSession:
             # start connection
             def initProject():
                 nvim = pynvim.attach("socket",path=self.servername)
-                # project["msg"] = "blub"
-                # self.triggerRefresh(nvim)
                 try:
                     AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread)
                 except Exception as e:
-                    # nvim.out_write(str(e)+"\n")
+                    self.log.error(traceback.format_exc(e))
                     nvim.err_write(traceback.format_exc(e)+"\n")
             thread = Thread(target=initProject,daemon=True)
             self.projectThreads.append(thread)
@@ -150,11 +155,13 @@ class AirLatexSession:
 
     @catchException
     def updateStatus(self, nvim, msg):
+        self.log.debug("updateStatus("+msg+")")
         self.status = msg
         nvim.command("call AirLatex_SidebarUpdateStatus()")
 
     @catchException
     def triggerRefresh(self, nvim):
+        self.log.debug("triggerRefresh()")
         nvim.command("call AirLatex_SidebarRefresh()")
 
     def _getWebSocketURL(self):

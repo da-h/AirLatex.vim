@@ -1,6 +1,7 @@
 import pynvim
 from difflib import SequenceMatcher
 from threading import Lock
+from airlatex.util import getLogger
 
 if "allBuffers" not in globals():
     allBuffers = {}
@@ -8,6 +9,7 @@ class DocumentBuffer:
     allBuffers = allBuffers
 
     def __init__(self, path, nvim):
+        self.log = getLogger(__name__)
         self.path = path
         self.nvim = nvim
         self.project_handler = path[0]["handler"]
@@ -23,6 +25,7 @@ class DocumentBuffer:
         return self.document["name"].split(".")[-1]
 
     def initDocumentBuffer(self):
+        self.log.debug("initDocumentBuffer()")
 
         # Creating new Buffer
         self.nvim.command('wincmd w')
@@ -51,6 +54,8 @@ class DocumentBuffer:
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
     def write(self, lines):
+        self.log.debug("write()")
+
         def writeLines(buffer,lines):
             buffer[0] = lines[0]
             for l in lines[1:]:
@@ -61,12 +66,14 @@ class DocumentBuffer:
         # self.nvim.command("call AirLatex_SidebarRefresh()")
 
     def updateRemoteCursor(self, cursor):
+        self.log.debug("updateRemoteCursor()")
         pass
         # def updateRemoteCursor(cursor, nvim):
         #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
         # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)
 
     def writeBuffer(self):
+        self.log.debug("writeBuffer()")
 
         # update CursorPosition
         self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor)
@@ -118,6 +125,7 @@ class DocumentBuffer:
             self.project_handler.sendOps(self.document, ops)
 
     def applyUpdate(self,ops):
+        self.log.debug("applyUpdate()")
 
         # adapt version
         if "v" in ops:

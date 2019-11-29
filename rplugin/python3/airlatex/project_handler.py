@@ -5,7 +5,7 @@ from tornado.websocket import websocket_connect
 import re
 from itertools import count
 import json
-from airlatex.util import _genTimeStamp
+from airlatex.util import _genTimeStamp, getLogger
 # from util import _genTimeStamp # FOR DEBUG MODE
 # from mock import Mock # FOR DEBUG MODE
 import time
@@ -38,6 +38,7 @@ class AirLatexProject:
         self.documents = {}
         self.ops_await_accept = False
         self.ops_mutex = Lock()
+        self.log = getLogger(__name__)
 
         PeriodicCallback(self.keep_alive, 20000).start()
         self.connect()
@@ -54,10 +55,12 @@ class AirLatexProject:
         assert message is not None
         message_content = json.dumps(message) if isinstance(message, dict) else message
         if message_type == "update":
+            self.log.debug("send update: "+message_content)
             self.ws.write_message("5:::"+message_content)
         elif message_type == "cmd":
             cmd_id = next(self.command_counter)
             msg = "5:" + str(cmd_id) + "+::" + message_content
+            self.log.debug("send cmd: "+msg)
             self.ws.write_message(msg)
             self.requests[str(cmd_id)] = message
 
@@ -87,6 +90,7 @@ class AirLatexProject:
 
     @gen.coroutine
     def sendOps(self, document, ops=[]):
+        self.log.debug("sendOps(doc=%s, ops=%s)" % (document["id"], str(len(ops))))
 
         with self.ops_mutex:
 
@@ -99,6 +103,7 @@ class AirLatexProject:
 
             # wait if awaiting server response
             if self.ops_await_accept:
+                self.log.debug("Still Awaiting Accept!")
                 return
 
             # clean buffer for next call
@@ -151,8 +156,7 @@ class AirLatexProject:
 
     @gen.coroutine
     def disconnect(self):
-        with open("/tmp/testclose","w") as f:
-            f.write("closed2")
+        self.log.debug("Connection Closed")
         IOLoop.instance().stop()
         self.ioloop.stop()
         self.sidebarMsg("Disconnected.")
@@ -165,9 +169,9 @@ class AirLatexProject:
             self.project["connected"] = True
             self.ws = yield websocket_connect(self.url)
         except Exception as e:
-            self.sidebarMsg("Websocket Connection Error: "+str(e))
+            self.sidebarMsg("Connection Error: "+str(e))
         else:
-            self.sidebarMsg("Websocket Connected.")
+            self.sidebarMsg("Connected.")
             self.run()
 
     @gen.coroutine
@@ -179,6 +183,7 @@ class AirLatexProject:
                 #     self.sidebarMsg("Connection Closed")
                 #     self.ws = None
                 #     break
+                self.log.debug(msg)
 
                 # parse the code
                 code, await_id, await_mult, answer_id, answer_mult, data = codere.match(msg).groups()

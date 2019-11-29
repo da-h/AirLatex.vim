@@ -4,10 +4,13 @@ from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
 from threading import Thread
+from airlatex.util import logging_settings
+
 
 @pynvim.plugin
 class AirLatex:
     def __init__(self, nvim):
+
         self.nvim = nvim
         self.servername = self.nvim.eval("v:servername")
         self.sidebar = False
@@ -15,6 +18,11 @@ class AirLatex:
 
     @pynvim.command('AirLatex', nargs=0, sync=True)
     def openSidebar(self):
+        # update user settings for logging
+        logging_settings["level"]=self.nvim.eval("g:AirLatexLogLevel")
+        logging_settings["file"]=self.nvim.eval("g:AirLatexLogFile")
+
+        # initialize sidebar
         if not self.sidebar:
             self.sidebar = SideBar(self.nvim, self)
             self.sidebar.initGUI()
@@ -30,6 +38,7 @@ class AirLatex:
                     self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar)
                     self.session.login(nvim)
                 except Exception as e:
+                    self.log.error(str(e))
                     nvim.out_write(str(e)+"\n")
             self.session_thread = Thread(target=initSession,args=(self,), daemon=True)
             self.session_thread.start()
