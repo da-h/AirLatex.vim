@@ -75,7 +75,7 @@ class AirLatexProject:
 
     @gen.coroutine
     def updateCursor(self,doc, pos):
-        self.send("cmd",{
+        self.send("update",{
             "name":"clientTracking.updatePosition",
             "args": [{
                 "doc_id": doc["_id"],
