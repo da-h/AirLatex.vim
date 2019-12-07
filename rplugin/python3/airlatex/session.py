@@ -127,7 +127,9 @@ class AirLatexSession:
 
                         buf = doc["buffer"]
                         self.log.debug("cmd="+cmd)
-                        if cmd == "applyUpdate":
+                        if cmd == "refresh":
+                            self.triggerRefresh(nvim)
+                        elif cmd == "applyUpdate":
                             buf.applyUpdate(data)
                         elif cmd == "write":
                             buf.write(data)

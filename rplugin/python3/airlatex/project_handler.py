@@ -153,6 +153,9 @@ class AirLatexProject:
             ]
         })
 
+    def triggerSidebarRefresh(self):
+        self.log.debug("triggerSidebarRefresh()")
+        self.msg_queue.put(("refresh",None,None))
 
     @gen.coroutine
     def disconnect(self):
@@ -266,6 +269,7 @@ class AirLatexProject:
                         project_info = data[1]
                         self.project.update(project_info)
                         self.project["open"] = True
+                        self.triggerSidebarRefresh()
 
                     elif cmd == "joinDoc":
                         id = request["args"][0]
