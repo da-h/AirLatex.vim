@@ -124,12 +124,13 @@ class AirLatexSession:
                             nvim.command("call AirLatex_SidebarRefresh()")
                             time.sleep(0.1)
                             continue
+                        elif cmd == "refresh":
+                            self.triggerRefresh(nvim)
+                            continue
 
                         buf = doc["buffer"]
                         self.log.debug("cmd="+cmd)
-                        if cmd == "refresh":
-                            self.triggerRefresh(nvim)
-                        elif cmd == "applyUpdate":
+                        if cmd == "applyUpdate":
                             buf.applyUpdate(data)
                         elif cmd == "write":
                             buf.write(data)
