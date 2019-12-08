@@ -80,9 +80,11 @@ class DocumentBuffer:
 
         # skip if not yet initialized
         if self.saved_buffer is None:
+            self.log.debug("writeBuffer() -> buffer not yet initialized")
             return
 
         with self.ops_mutex:
+            self.log.debug("writeBuffer() -> ops_mutex acquired")
 
             # nothing to do
             if len(self.saved_buffer) == len(self.buffer):
@@ -92,6 +94,7 @@ class DocumentBuffer:
                         skip = False
                         break
                 if skip:
+                    self.log.debug("writeBuffer() -> ops_mutex released (hashtest: nothing to do)")
                     return
 
             # calculate diff
@@ -115,6 +118,7 @@ class DocumentBuffer:
 
             # nothing to do
             if len(ops) == 0:
+                self.log.debug("writeBuffer() -> ops_mutex released (sequencematcher: nothing to do)")
                 return
 
             # reverse, as last op should be applied first
@@ -122,7 +126,9 @@ class DocumentBuffer:
 
             # update saved buffer & send command
             self.saved_buffer = self.buffer[:]
+            self.log.debug("writeBuffer() -> sending ops")
             self.project_handler.sendOps(self.document, ops)
+            self.log.debug("writeBuffer() -> ops_mutex released")
 
     def applyUpdate(self,ops):
         self.log.debug("applyUpdate()")

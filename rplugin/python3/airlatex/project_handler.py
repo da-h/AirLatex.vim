@@ -76,7 +76,6 @@ class AirLatexProject:
             if "row" in cursor and "column" in cursor and "doc_id" in cursor:
                 self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
-    @gen.coroutine
     def updateCursor(self,doc, pos):
         self.send("update",{
             "name":"clientTracking.updatePosition",
@@ -88,9 +87,8 @@ class AirLatexProject:
         })
 
 
-    @gen.coroutine
     def sendOps(self, document, ops=[]):
-        self.log.debug("sendOps(doc=%s, ops=%s)" % (document["id"], str(len(ops))))
+        self.log.debug("sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
 
         with self.ops_mutex:
 
@@ -129,7 +127,6 @@ class AirLatexProject:
                 ]
             })
 
-    @gen.coroutine
     def joinDocument(self, buffer):
 
         # register buffer in document
@@ -157,7 +154,6 @@ class AirLatexProject:
         self.log.debug("triggerSidebarRefresh()")
         self.msg_queue.put(("refresh",None,None))
 
-    @gen.coroutine
     def disconnect(self):
         self.log.debug("Connection Closed")
         IOLoop.instance().stop()
