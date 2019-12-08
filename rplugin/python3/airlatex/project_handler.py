@@ -44,10 +44,6 @@ class AirLatexProject:
         self.connect()
         self.ioloop.start()
 
-    def cleanup(self):
-        self.msg_thread.do_run = False
-        self.disconnect()
-
     def send(self,message_type,message=None):
         if message_type == "keep_alive":
             self.ws.write_message("2::")
@@ -155,12 +151,14 @@ class AirLatexProject:
         self.msg_queue.put(("refresh",None,None))
 
     def disconnect(self):
+        del self.project["handler"]
+        self.msg_thread.do_run = False
         self.log.debug("Connection Closed")
-        IOLoop.instance().stop()
         self.ioloop.stop()
         self.sidebarMsg("Disconnected.")
         self.project["open"] = False
         self.project["connected"] = False
+        self.triggerSidebarRefresh()
 
     @gen.coroutine
     def connect(self):

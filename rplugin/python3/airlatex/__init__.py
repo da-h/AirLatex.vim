@@ -55,6 +55,10 @@ class AirLatex:
     def projectEnter(self, args):
         self.sidebar.cursorAction()
 
+    @pynvim.function('AirLatex_ProjectLeave', sync=True)
+    def projectLeave(self, args):
+        self.sidebar.cursorAction("del")
+
     # @pynvim.command('AirLatex_UpdatePos', nargs=0, sync=True)
     # def projectEnter(self):
     #     plugin.updateProject()

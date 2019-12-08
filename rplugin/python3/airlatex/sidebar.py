@@ -120,6 +120,8 @@ class SideBar:
         self.nvim.command("nmap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
         self.nvim.command("nmap <silent> <enter> :call AirLatex_ProjectEnter() <enter>")
         self.nvim.command("autocmd VimLeavePre <buffer> :call AirLatex_Close()")
+        self.nvim.command("nmap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
+        self.nvim.command("nmap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
 
     @catchException
     def listProjects(self, overwrite=False):
@@ -255,8 +257,9 @@ class SideBar:
             if "handler" in project:
                 if key == "enter":
                     self._toggle(self.cursorPos[-1], "open", default=False)
-                elif key == "d":
-                    project["handler"].disconnect()
+                elif key == "del":
+                    if "connected" in project and project["connected"]:
+                        project["handler"].disconnect()
                 self.triggerRefresh()
             else:
                 self.airlatex.session.connectProject(self.nvim, project)

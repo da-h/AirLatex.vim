@@ -45,9 +45,10 @@ class AirLatexSession:
         self.log.debug("cleanup()")
         for p in self.cached_projectList:
             if "handler" in p:
-                p["handler"]
+                p["handler"].disconnect()
         for t in self.projectThreads:
-            t.stop()
+            t.do_run = False
+        self.projectThreads = []
 
     @catchException
     def login(self, nvim):
