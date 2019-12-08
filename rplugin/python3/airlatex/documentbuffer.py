@@ -1,6 +1,6 @@
 import pynvim
 from difflib import SequenceMatcher
-from threading import Lock
+from threading import RLock
 from airlatex.util import getLogger
 
 if "allBuffers" not in globals():
@@ -15,8 +15,8 @@ class DocumentBuffer:
         self.project_handler = path[0]["handler"]
         self.document = path[-1]
         self.initDocumentBuffer()
-        self.buffer_mutex = Lock()
-        self.ops_mutex = Lock()
+        self.buffer_mutex = RLock()
+        self.ops_mutex = RLock()
         self.saved_buffer = None
 
     def getName(self):

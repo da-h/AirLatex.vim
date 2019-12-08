@@ -9,7 +9,7 @@ from airlatex.util import _genTimeStamp, getLogger
 # from util import _genTimeStamp # FOR DEBUG MODE
 # from mock import Mock # FOR DEBUG MODE
 import time
-from threading import Thread, currentThread, Lock
+from threading import Thread, currentThread, RLock
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -37,7 +37,7 @@ class AirLatexProject:
         self.cursors = {}
         self.documents = {}
         self.ops_await_accept = False
-        self.ops_mutex = Lock()
+        self.ops_mutex = RLock()
         self.log = getLogger(__name__)
 
         PeriodicCallback(self.keep_alive, 20000).start()

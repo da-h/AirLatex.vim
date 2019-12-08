@@ -1,6 +1,6 @@
 import pynvim
 from time import gmtime, strftime
-from threading import Thread, Lock
+from threading import Thread, RLock
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import getLogger
 import traceback
@@ -25,7 +25,7 @@ class SideBar:
         self.lastUpdate = gmtime()
         self.buffer = None
         self.buffer_write_i = 0
-        self.buffer_mutex = Lock()
+        self.buffer_mutex = RLock()
         self.cursorPos = []
         self.log = getLogger(__name__)
         self.log.debug("SideBar initialized.")
