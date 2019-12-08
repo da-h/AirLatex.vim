@@ -56,13 +56,16 @@ class AirLatexSession:
         if not self.authenticated:
             self.updateStatus(nvim, "Connecting")
             # check if cookie found by testing if projects redirects to login page
-            redirect  = self.httpHandler.get(self.url + "/projects", cookies=cj)
-            if len(redirect.history) == 0:
-                self.authenticated = True
-                self.updateProjectList(nvim)
-                return True
-            else:
-                return False
+            try:
+                redirect  = self.httpHandler.get(self.url + "/projects", cookies=cj)
+                if len(redirect.history) == 0:
+                    self.authenticated = True
+                    self.updateProjectList(nvim)
+                    return True
+                else:
+                    return False
+            except Exception as e:
+                self.updateStatus(nvim, "Connection failed: "+str(e))
         else:
             return False
 
