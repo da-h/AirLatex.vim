@@ -62,14 +62,16 @@ class SideBar:
         else:
             self.buffer[self.buffer_write_i] = arg
         self.buffer_write_i += 1
-        cursorPos = self.nvim.current.window.cursor[0]
-        if self.buffer_write_i == cursorPos:
-            self.cursorPos = pos
+        if self.buffer == self.nvim.current.buffer:
+            cursorPos = self.nvim.current.window.cursor[0]
+            if self.buffer_write_i == cursorPos:
+                self.cursorPos = pos
 
     @catchException
     def vimCursorSet(self,row,col):
-        window = self.nvim.current.window
-        window.cursor = (row,col)
+        if self.buffer == self.nvim.current.buffer:
+            window = self.nvim.current.window
+            window.cursor = (row,col)
 
     @catchException
     def initGUI(self):
@@ -89,6 +91,8 @@ class SideBar:
             silent! exec "buffer " . "AirLatex"
         """)
 
+        self.buffer = self.nvim.current.buffer
+
         self.nvim.command('file AirLatex')
         self.nvim.command('setlocal winfixwidth')
 
@@ -107,7 +111,6 @@ class SideBar:
         self.nvim.command('iabc <buffer>')
         self.nvim.command('setlocal cursorline')
         self.nvim.command('setlocal filetype=airlatex')
-        self.buffer = self.nvim.current.buffer
 
         # Register Mappings
         self.nvim.command("nmap <silent> <buffer> q :q <enter>")
@@ -178,7 +181,7 @@ class SideBar:
             self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
             if not overwrite:
                 self.vimCursorSet(5,1)
-            del(self.nvim.current.buffer[self.buffer_write_i:len(self.nvim.current.buffer)])
+            del(self.buffer[self.buffer_write_i:len(self.buffer)])
             # self.nvim.command('setlocal noma')
         except Exception as e:
             self.log.error(traceback.format_exc(e))
