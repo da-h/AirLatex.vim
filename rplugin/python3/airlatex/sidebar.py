@@ -100,7 +100,7 @@ class SideBar:
         self.nvim.command('setlocal noswapfile')
         self.nvim.command('setlocal buftype=nofile')
         self.nvim.command('setlocal bufhidden=hide')
-        self.nvim.command('setlocal nowrap')
+        self.nvim.command('setlocal wrap')
         self.nvim.command('setlocal foldcolumn=0')
         self.nvim.command('setlocal foldmethod=manual')
         self.nvim.command('setlocal nofoldenable')
