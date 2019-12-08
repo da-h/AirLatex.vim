@@ -13,7 +13,7 @@ def catchException(fn):
             return fn(self, *args, **kwargs)
         except Exception as e:
             self.log.error(str(e))
-            # nvim.err_write(traceback.format_exc(e)+"\n")
+            # self.nvim.err_write(traceback.format_exc(e)+"\n")
             self.nvim.err_write(str(e)+"\n")
     return wrapped
 
@@ -132,7 +132,7 @@ class SideBar:
             # self.nvim.command('setlocal ma')
             self.cursorPos = []
             if self.airlatex.session:
-                projectList = self.airlatex.session.projectList(self.nvim)
+                projectList = self.airlatex.session.projectList()
                 status = self.airlatex.session.status
             else:
                 projectList = []
@@ -181,6 +181,7 @@ class SideBar:
             self.statusline = self.buffer.range(self.buffer_write_i, self.buffer_write_i+1)
             self.updateStatus()
             self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
+            self.bufferappend(" Quit All    : enter", ["disconnect"])
             if not overwrite:
                 self.vimCursorSet(5,1)
             del(self.buffer[self.buffer_write_i:len(self.buffer)])
@@ -253,16 +254,23 @@ class SideBar:
             pass
 
         elif len(self.cursorPos) == 1:
-            project = self.cursorPos[0]
-            if "handler" in project:
-                if key == "enter":
-                    self._toggle(self.cursorPos[-1], "open", default=False)
-                elif key == "del":
-                    if "connected" in project and project["connected"]:
-                        project["handler"].disconnect()
-                self.triggerRefresh()
-            else:
-                self.airlatex.session.connectProject(self.nvim, project)
+            # disconnect all
+            if self.cursorPos[0] == "disconnect":
+                if self.airlatex.session:
+                    self.airlatex.session.cleanup(self.nvim)
+
+            # else is project
+            elif not isinstance(self.cursorPos[0], str):
+                project = self.cursorPos[0]
+                if "handler" in project:
+                    if key == "enter":
+                        self._toggle(self.cursorPos[-1], "open", default=False)
+                    elif key == "del":
+                        if "connected" in project and project["connected"]:
+                            project["handler"].disconnect()
+                    self.triggerRefresh()
+                else:
+                    self.airlatex.session.connectProject(self.nvim, project)
 
         elif not isinstance(self.cursorPos[-1], dict):
             pass

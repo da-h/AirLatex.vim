@@ -67,8 +67,8 @@ class AirLatexSession:
             return False
 
     # Returns a list of airlatex projects
-    @catchException
-    def projectList(self, nvim):
+    # @catchException
+    def projectList(self):
         return self.cached_projectList
 
     @catchException
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     async def main():
         sl = AirLatexSession(DOMAIN, None, sidebar)
         sl.login(nvim)
-        project = sl.projectList(nvim)[1]
+        project = sl.projectList()[1]
         print(">>>>",project)
         sl.connectProject(nvim, project)
         time.sleep(3)
