@@ -9,7 +9,8 @@ from airlatex.util import _genTimeStamp, getLogger
 # from util import _genTimeStamp # FOR DEBUG MODE
 # from mock import Mock # FOR DEBUG MODE
 import time
-from threading import Thread, currentThread, RLock
+from tornado.queues import Queue
+from tornado.locks import Lock, Event
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -36,20 +37,22 @@ class AirLatexProject:
         self.requests = {}
         self.cursors = {}
         self.documents = {}
-        self.ops_await_accept = False
-        self.ops_mutex = RLock()
         self.log = getLogger(__name__)
+        self.ops_queue = Queue()
 
+        # start tornado event loop & related callbacks
+        IOLoop.current().spawn_callback(self.sendOps_flush)
         PeriodicCallback(self.keep_alive, 20000).start()
         self.connect()
         self.ioloop.start()
 
-    def send(self,message_type,message=None):
+    def send(self,message_type,message=None,event=None):
         if message_type == "keep_alive":
             self.ws.write_message("2::")
             return
         assert message is not None
         message_content = json.dumps(message) if isinstance(message, dict) else message
+        message["event"] = event
         if message_type == "update":
             self.log.debug("send update: "+message_content)
             self.ws.write_message("5:::"+message_content)
@@ -57,8 +60,8 @@ class AirLatexProject:
             cmd_id = next(self.command_counter)
             msg = "5:" + str(cmd_id) + "+::" + message_content
             self.log.debug("send cmd: "+msg)
-            self.ws.write_message(msg)
             self.requests[str(cmd_id)] = message
+            self.ws.write_message(msg)
 
     def sidebarMsg(self, msg):
         self.msg_queue.put(("msg",None,msg))
@@ -82,46 +85,96 @@ class AirLatexProject:
             }]
         })
 
-
+    # wrapper for the ioloop
     def sendOps(self, document, ops=[]):
         self.log.debug("sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
+        self.ioloop.add_callback(self.ops_queue.put, (document, ops))
 
-        with self.ops_mutex:
+    # actual sending of ops
+    async def _sendOps(self, document, ops=[]):
+        self.log.debug("_sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
 
-            # append new ops to buffer
-            document["ops_buffer"] += ops
+        # append new ops to buffer
+        document["ops_buffer"] += ops
 
-            # skip if nothing to do
-            if len(document["ops_buffer"]) == 0:
-                return
+        # skip if nothing to do
+        if len(document["ops_buffer"]) == 0:
+            return
 
-            # wait if awaiting server response
-            if self.ops_await_accept:
-                self.log.debug("Still Awaiting Accept!")
-                return
+        # wait if awaiting server response
+        event = Event()
+        self.log.debug("ops await accept -> new request")
 
-            # clean buffer for next call
-            ops_buffer, document["ops_buffer"], self.ops_await_accept = document["ops_buffer"], [], True
+        # clean buffer for next call
+        ops_buffer, document["ops_buffer"] = document["ops_buffer"], []
 
-            # actually send operations
-            source = document["_id"]
-            self.send("cmd",{
-                "name":"applyOtUpdate",
-                "args": [
-                    document["_id"],
-                    {
-                        "doc": document["_id"],
-                        "meta": {
-                            # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
-                            "source": source,
-                            "ts": _genTimeStamp(),
-                            "user_id": self.used_id
-                        },
-                        "op": ops_buffer,
-                        "v": document["version"]
-                    }
-                ]
-            })
+        # actually send operations
+        source = document["_id"]
+        self.send("cmd",{
+            "name":"applyOtUpdate",
+            "args": [
+                document["_id"],
+                {
+                    "doc": document["_id"],
+                    "meta": {
+                        # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
+                        "source": source,
+                        "ts": _genTimeStamp(),
+                        "user_id": self.used_id
+                    },
+                    "op": ops_buffer,
+                    "v": document["version"]
+                }
+            ]
+        }, event=event)
+        self.log.debug("ops await accept -> wait")
+        await event.wait()
+        self.log.debug("ops await accept -> done")
+
+    # sendOps whenever events appear in queue
+    # (is only called in constructor)
+    async def sendOps_flush(self):
+        self.log.debug("starting sendOps_flush()")
+
+        # direct sending
+        # async for document, ops in self.ops_queue:
+        #     self.log.debug("sendOps_flush() -> _sendOps")
+        #     await self._sendOps(document, ops)
+        #     self.log.debug("sendOps_flush() -> _sendOps done")
+
+        # collects ops and sends them in a batch, server is ready
+        while True:
+            self.log.debug("sendOps_flush() -> waiting")
+            all_ops = {}
+
+            # await first element
+            document, ops = await self.ops_queue.get()
+            self.log.debug("sendOps_flush() -> got first")
+            if document["_id"] not in all_ops:
+                all_ops[document["_id"]] = ops
+            else:
+                all_ops[document["_id"]] += ops
+
+            # get also all other elements that are currently in queue
+            num = self.ops_queue.qsize()
+            for i in range(num):
+                self.log.debug("sendOps_flush() -> got another "+str(num))
+                document, ops = await self.ops_queue.get()
+                self.log.debug("sendOps_flush() -> got another")
+                if document["_id"] not in all_ops:
+                    all_ops[document["_id"]] = ops
+                else:
+                    all_ops[document["_id"]] += ops
+                self.log.debug("sendOps_flush() -> got another end")
+
+            # apply all ops one after another
+            self.log.debug("sendOps_flush() -> sending")
+            for doc_id, ops in all_ops.items():
+                document = self.documents[doc_id]
+                await self._sendOps(document, ops)
+
+
+
 
     def joinDocument(self, buffer):
 
@@ -277,8 +330,7 @@ class AirLatexProject:
                         self.documents[id]["version"] += 1
 
                         # flush next
-                        self.ops_await_accept = False
-                        self.sendOps(self.documents[id])
+                        request["event"].set()
 
                         # remove awaiting request
                         del self.requests[answer_id]

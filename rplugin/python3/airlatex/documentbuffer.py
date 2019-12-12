@@ -16,7 +16,6 @@ class DocumentBuffer:
         self.document = path[-1]
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
-        self.ops_mutex = RLock()
         self.saved_buffer = None
 
     def getName(self):
@@ -83,52 +82,49 @@ class DocumentBuffer:
             self.log.debug("writeBuffer() -> buffer not yet initialized")
             return
 
-        with self.ops_mutex:
-            self.log.debug("writeBuffer() -> ops_mutex acquired")
-
-            # nothing to do
-            if len(self.saved_buffer) == len(self.buffer):
-                skip = True
-                for ol,nl in zip(self.saved_buffer, self.buffer):
-                    if hash(ol) != hash(nl):
-                        skip = False
-                        break
-                if skip:
-                    self.log.debug("writeBuffer() -> ops_mutex released (hashtest: nothing to do)")
-                    return
-
-            # calculate diff
-            old = "\n".join(self.saved_buffer)
-            new = "\n".join(self.buffer)
-            S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-            ops = []
-            for op in S:
-                if op[0] == "equal":
-                    continue
-
-                elif op[0] == "replace":
-                    ops.append({"p": op[1], "i": new[op[3]:op[4]]})
-                    ops.append({"p": op[1], "d": old[op[1]:op[2]]})
-
-                elif op[0] == "insert":
-                    ops.append({"p": op[1], "i": new[op[3]:op[4]]})
-
-                elif op[0] == "delete":
-                    ops.append({"p": op[1], "d": old[op[1]:op[2]]})
-
-            # nothing to do
-            if len(ops) == 0:
-                self.log.debug("writeBuffer() -> ops_mutex released (sequencematcher: nothing to do)")
+        # nothing to do
+        if len(self.saved_buffer) == len(self.buffer):
+            skip = True
+            for ol,nl in zip(self.saved_buffer, self.buffer):
+                if hash(ol) != hash(nl):
+                    skip = False
+                    break
+            if skip:
+                self.log.debug("writeBuffer() -> done (hashtest: nothing to do)")
                 return
 
-            # reverse, as last op should be applied first
-            ops.reverse()
+        # calculate diff
+        old = "\n".join(self.saved_buffer)
+        new = "\n".join(self.buffer)
+        S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+        ops = []
+        for op in S:
+            if op[0] == "equal":
+                continue
 
-            # update saved buffer & send command
-            self.saved_buffer = self.buffer[:]
-            self.log.debug("writeBuffer() -> sending ops")
-            self.project_handler.sendOps(self.document, ops)
-            self.log.debug("writeBuffer() -> ops_mutex released")
+            elif op[0] == "replace":
+                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
+                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
+
+            elif op[0] == "insert":
+                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
+
+            elif op[0] == "delete":
+                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
+
+        # nothing to do
+        if len(ops) == 0:
+            self.log.debug("writeBuffer() -> done (sequencematcher: nothing to do)")
+            return
+
+        # reverse, as last op should be applied first
+        ops.reverse()
+
+        # update saved buffer & send command
+        self.saved_buffer = self.buffer[:]
+        self.log.debug("writeBuffer() -> sending ops")
+        self.project_handler.sendOps(self.document, ops)
+        self.log.debug("writeBuffer() -> done")
 
     def applyUpdate(self,ops):
         self.log.debug("applyUpdate()")
