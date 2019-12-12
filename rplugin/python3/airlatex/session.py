@@ -123,7 +123,7 @@ class AirLatexSession:
                     cmd, doc, data = queue.get()
                     try:
                         if cmd == "msg":
-                            self.log.debug("msg_queue:"+data)
+                            self.log.debug("msg_queue :"+data)
                             project["msg"] = data
                             nvim.command("call AirLatex_SidebarRefresh()")
                             time.sleep(0.1)

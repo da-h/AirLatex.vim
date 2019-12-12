@@ -150,15 +150,15 @@ class DocumentBuffer:
                     if 'd' in op:
                         p = op['p']
                         s = op['d']
-                        self._remove(self.buffer,p,s)
                         self._remove(self.saved_buffer,p,s)
+                        self._remove(self.buffer,p,s)
 
                     # add characters and newlines
                     if 'i' in op:
                         p = op['p']
                         s = op['i']
-                        self._insert(self.buffer,p,s)
                         self._insert(self.saved_buffer,p,s)
+                        self._insert(self.buffer,p,s)
             finally:
                 self.buffer_mutex.release()
         self.nvim.async_call(applyOps, self, ops)
