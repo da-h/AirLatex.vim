@@ -93,24 +93,65 @@ class DocumentBuffer:
                 self.log.debug("writeBuffer() -> done (hashtest: nothing to do)")
                 return
 
-        # calculate diff
-        old = "\n".join(self.saved_buffer)
-        new = "\n".join(self.buffer)
-        S = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+        # cummulative position of line
+        pos = [0]
+        for row in self.saved_buffer:
+            # pos.append(pos[-1]+ ( len(row)+1 if len(row) > 0 else 0 ) )
+            pos.append(pos[-1]+len(row)+1)
+        self.log.warning("pos:"+str(pos))
+
+        # first calculate diff row-wise
         ops = []
+        S = SequenceMatcher(None, self.saved_buffer, self.buffer, autojunk=False).get_opcodes()
         for op in S:
             if op[0] == "equal":
                 continue
 
-            elif op[0] == "replace":
-                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
-                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
-
+            # inserting a whole row
             elif op[0] == "insert":
-                ops.append({"p": op[1], "i": new[op[3]:op[4]]})
+                s = "\n".join(self.buffer[op[3]:op[4]])
+                if op[1] > 0:
+                    p = pos[op[1]] - 1
+                    s = "\n" + s
+                else:
+                    p = 0
+                    s = s + "\n"
+                self.log.warning(str(len(self.saved_buffer))+","+str(op)+" - "+s)
+                ops.append({"p": p, "i": s})
 
+            # deleting a whole row
             elif op[0] == "delete":
-                ops.append({"p": op[1], "d": old[op[1]:op[2]]})
+                s = "\n".join(self.saved_buffer[op[1]:op[2]])
+                if op[1] > 0:
+                    p = pos[op[1]] - 1
+                    s = "\n" + s
+                else:
+                    p = 0
+                    s = s + "\n"
+                self.log.warning(str(len(self.saved_buffer))+","+str(op)+" - "+s)
+                ops.append({"p": p , "d": s})
+
+            # for replace, check in more detail what has changed
+            elif op[0] == "replace":
+                old = "\n".join(self.saved_buffer[op[1]:op[2]])
+                new = "\n".join(self.buffer[op[3]:op[4]])
+                S2 = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+                for op2 in S2:
+                    # relative to document end
+                    linestart = pos[op[1]]
+
+                    if op2[0] == "equal":
+                        continue
+
+                    elif op2[0] == "replace":
+                        ops.append({"p": linestart + op2[1], "i": new[op2[3]:op2[4]]})
+                        ops.append({"p": linestart + op2[1], "d": old[op2[1]:op2[2]]})
+
+                    elif op2[0] == "insert":
+                        ops.append({"p": linestart + op2[1], "i": new[op2[3]:op2[4]]})
+
+                    elif op2[0] == "delete":
+                        ops.append({"p": linestart + op2[1], "d": old[op2[1]:op2[2]]})
 
         # nothing to do
         if len(ops) == 0:
