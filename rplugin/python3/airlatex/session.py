@@ -123,7 +123,7 @@ class AirLatexSession:
                     cmd, doc, data = queue.get()
                     try:
                         if cmd == "msg":
-                            self.log.debug("msg_queue :"+data)
+                            self.log.debug("msg_queue : "+data)
                             project["msg"] = data
                             nvim.command("call AirLatex_SidebarRefresh()")
                             time.sleep(0.1)
@@ -162,13 +162,13 @@ class AirLatexSession:
 
     @catchException
     def updateStatus(self, nvim, msg):
-        self.log.debug("updateStatus("+msg+")")
+        self.log.debug_gui("updateStatus("+msg+")")
         self.status = msg
         nvim.command("call AirLatex_SidebarUpdateStatus()")
 
     @catchException
     def triggerRefresh(self, nvim):
-        self.log.debug("triggerRefresh()")
+        self.log.debug_gui("triggerRefresh()")
         nvim.command("call AirLatex_SidebarRefresh()")
 
     def _getWebSocketURL(self):

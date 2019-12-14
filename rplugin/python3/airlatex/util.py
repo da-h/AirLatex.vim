@@ -13,7 +13,8 @@ def _genTimeStamp():
 import logging
 logging_settings={
     "level": "NOTSET",
-    "file": "AirLatex.log"
+    "file": "AirLatex.log",
+    "gui": False
 }
 
 def getLogger(name):
@@ -35,6 +36,14 @@ def getLogger(name):
         # logger settings
         log.addHandler(h)
         log.setLevel(getattr(logging,level))
+
+    # gui related logging
+    DEBUG_LEVEL_GUI = 9
+    logging.addLevelName(DEBUG_LEVEL_GUI, "DEBUG_GUI")
+    def debug_gui(self, message, *args, **kws):
+        if self.isEnabledFor(DEBUG_LEVEL_GUI) and logging_settings["gui"]:
+            self._log(DEBUG_LEVEL_GUI, message, args, **kws)
+    logging.Logger.debug_gui = debug_gui
 
     return log
 

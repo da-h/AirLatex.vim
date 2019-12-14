@@ -28,7 +28,7 @@ class SideBar:
         self.buffer_mutex = RLock()
         self.cursorPos = []
         self.log = getLogger(__name__)
-        self.log.debug("SideBar initialized.")
+        self.log.debug_gui("SideBar initialized.")
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
@@ -44,13 +44,13 @@ class SideBar:
 
     @catchException
     def triggerRefresh(self):
-        self.log.debug("triggerRefresh()")
+        self.log.debug_gui("triggerRefresh()")
         self.listProjects(overwrite=True)
 
     @catchException
     def updateStatus(self):
         if self.airlatex.session:
-            self.log.debug("updateStatus()")
+            self.log.debug_gui("updateStatus()")
             # self.nvim.command('setlocal ma')
             self.statusline[0] = self.statusline[0][:15] + self.airlatex.session.status
             # self.nvim.command('setlocal noma')
@@ -75,13 +75,13 @@ class SideBar:
 
     @catchException
     def initGUI(self):
-        self.log.debug("initGUI()")
+        self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
         self.listProjects()
 
     @catchException
     def initSidebarBuffer(self):
-        self.log.debug("initSidebarBuffer()")
+        self.log.debug_gui("initSidebarBuffer()")
 
         self.nvim.command('let splitLocation = g:AirLatexWinPos ==# "left" ? "topleft " : "botright "')
         self.nvim.command('let splitSize = g:AirLatexWinSize')
@@ -125,9 +125,9 @@ class SideBar:
 
     @catchException
     def listProjects(self, overwrite=False):
-        self.log.debug("listProjects(%s)" % str(overwrite))
+        self.log.debug_gui("listProjects(%s)" % str(overwrite))
         self.buffer_mutex.acquire()
-        self.log.debug("listProjects -> mutex locked")
+        self.log.debug_gui("listProjects -> mutex locked")
         try:
             # self.nvim.command('setlocal ma')
             self.cursorPos = []
@@ -191,11 +191,11 @@ class SideBar:
             self.nvim.err_write(traceback.format_exc(e)+"\n")
         finally:
             self.buffer_mutex.release()
-            self.log.debug("listProjects -> mutex released")
+            self.log.debug_gui("listProjects -> mutex released")
 
     @catchException
     def listProjectStructure(self, rootFolder, pos, indent=0):
-        self.log.debug("listProjectStructure()")
+        self.log.debug_gui("listProjectStructure()")
 
         # list folders first
         indentStr = "   "+"  "*indent
@@ -245,7 +245,7 @@ class SideBar:
 
     @catchException
     def cursorAction(self, key="enter"):
-        self.log.debug("cursorAction(%s)" % key)
+        self.log.debug_gui("cursorAction(%s)" % key)
 
         if not isinstance(self.cursorPos, list):
             pass

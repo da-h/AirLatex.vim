@@ -24,7 +24,7 @@ class DocumentBuffer:
         return self.document["name"].split(".")[-1]
 
     def initDocumentBuffer(self):
-        self.log.debug("initDocumentBuffer()")
+        self.log.debug_gui("initDocumentBuffer()")
 
         # Creating new Buffer
         self.nvim.command('wincmd w')
@@ -53,7 +53,7 @@ class DocumentBuffer:
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
     def write(self, lines):
-        self.log.debug("write()")
+        self.log.debug_gui("write()")
 
         def writeLines(buffer,lines):
             buffer[0] = lines[0]
@@ -65,21 +65,21 @@ class DocumentBuffer:
         # self.nvim.command("call AirLatex_SidebarRefresh()")
 
     def updateRemoteCursor(self, cursor):
-        self.log.debug("updateRemoteCursor()")
+        self.log.debug_gui("updateRemoteCursor()")
         pass
         # def updateRemoteCursor(cursor, nvim):
         #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
         # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)
 
     def writeBuffer(self):
-        self.log.debug("writeBuffer()")
+        self.log.debug_gui("writeBuffer()")
 
         # update CursorPosition
         self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor)
 
         # skip if not yet initialized
         if self.saved_buffer is None:
-            self.log.debug("writeBuffer() -> buffer not yet initialized")
+            self.log.debug_gui("writeBuffer() -> buffer not yet initialized")
             return
 
         # nothing to do
@@ -90,7 +90,7 @@ class DocumentBuffer:
                     skip = False
                     break
             if skip:
-                self.log.debug("writeBuffer() -> done (hashtest: nothing to do)")
+                self.log.debug_gui("writeBuffer() -> done (hashtest: nothing to do)")
                 return
 
         # cummulative position of line
@@ -98,7 +98,6 @@ class DocumentBuffer:
         for row in self.saved_buffer:
             # pos.append(pos[-1]+ ( len(row)+1 if len(row) > 0 else 0 ) )
             pos.append(pos[-1]+len(row)+1)
-        self.log.warning("pos:"+str(pos))
 
         # first calculate diff row-wise
         ops = []
@@ -116,7 +115,6 @@ class DocumentBuffer:
                 else:
                     p = 0
                     s = s + "\n"
-                self.log.warning(str(len(self.saved_buffer))+","+str(op)+" - "+s)
                 ops.append({"p": p, "i": s})
 
             # deleting a whole row
@@ -128,7 +126,6 @@ class DocumentBuffer:
                 else:
                     p = 0
                     s = s + "\n"
-                self.log.warning(str(len(self.saved_buffer))+","+str(op)+" - "+s)
                 ops.append({"p": p , "d": s})
 
             # for replace, check in more detail what has changed
@@ -155,7 +152,7 @@ class DocumentBuffer:
 
         # nothing to do
         if len(ops) == 0:
-            self.log.debug("writeBuffer() -> done (sequencematcher: nothing to do)")
+            self.log.debug_gui("writeBuffer() -> done (sequencematcher: nothing to do)")
             return
 
         # reverse, as last op should be applied first
@@ -163,12 +160,12 @@ class DocumentBuffer:
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
-        self.log.debug("writeBuffer() -> sending ops")
+        self.log.debug_gui("writeBuffer() -> sending ops")
         self.project_handler.sendOps(self.document, ops)
-        self.log.debug("writeBuffer() -> done")
+        self.log.debug_gui("writeBuffer() -> done")
 
     def applyUpdate(self,ops):
-        self.log.debug("applyUpdate()")
+        self.log.debug_gui("applyUpdate()")
 
         # adapt version
         if "v" in ops:

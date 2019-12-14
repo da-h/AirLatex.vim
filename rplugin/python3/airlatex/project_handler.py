@@ -87,7 +87,6 @@ class AirLatexProject:
 
     # wrapper for the ioloop
     def sendOps(self, document, ops=[]):
-        self.log.debug("sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
         self.ioloop.add_callback(self.ops_queue.put, (document, ops))
 
     # actual sending of ops
