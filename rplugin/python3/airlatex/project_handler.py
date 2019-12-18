@@ -64,7 +64,10 @@ class AirLatexProject:
             self.ws.write_message(msg)
 
     def sidebarMsg(self, msg):
-        self.msg_queue.put(("msg",None,msg))
+        self.msg_queue.put(("msg",None, msg))
+
+    def gui_await(self, waiting=True):
+        self.msg_queue.put(("await",None, waiting))
 
     def bufferDo(self, doc_id, command, data):
         if doc_id in self.documents:
@@ -102,6 +105,7 @@ class AirLatexProject:
 
         # wait if awaiting server response
         event = Event()
+        self.gui_await(True)
         self.log.debug("ops await accept -> new request")
 
         # clean buffer for next call
@@ -128,6 +132,7 @@ class AirLatexProject:
         }, event=event)
         self.log.debug("ops await accept -> wait")
         await event.wait()
+        self.gui_await(False)
         self.log.debug("ops await accept -> done")
 
     # sendOps whenever events appear in queue

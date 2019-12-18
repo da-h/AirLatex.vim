@@ -128,6 +128,11 @@ class AirLatexSession:
                             nvim.command("call AirLatex_SidebarRefresh()")
                             time.sleep(0.1)
                             continue
+                        elif cmd == "await":
+                            project["await"] = data
+                            nvim.command("call AirLatex_SidebarRefresh()")
+                            time.sleep(0.1)
+                            continue
                         elif cmd == "refresh":
                             self.triggerRefresh(nvim)
                             continue
