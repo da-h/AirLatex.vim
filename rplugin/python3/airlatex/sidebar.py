@@ -29,6 +29,7 @@ class SideBar:
         self.cursorPos = []
         self.log = getLogger(__name__)
         self.log.debug_gui("SideBar initialized.")
+        self.cursor = (4,0)
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
@@ -62,14 +63,12 @@ class SideBar:
         else:
             self.buffer[self.buffer_write_i] = arg
         self.buffer_write_i += 1
-        if self.buffer == self.nvim.current.buffer:
-            cursorPos = self.nvim.current.window.cursor[0]
-            if self.buffer_write_i == cursorPos:
-                self.cursorPos = pos
+        if self.buffer_write_i == self.cursor[0]:
+            self.cursorPos = pos
 
     @catchException
     def vimCursorSet(self,row,col):
-        if self.buffer == self.nvim.current.buffer:
+        if self.buffer == self.nvim.current.window.buffer:
             window = self.nvim.current.window
             window.cursor = (row,col)
 
@@ -127,6 +126,8 @@ class SideBar:
     def listProjects(self, overwrite=False):
         self.log.debug_gui("listProjects(%s)" % str(overwrite))
         self.buffer_mutex.acquire()
+        if self.buffer == self.nvim.current.window.buffer:
+            self.cursor = self.nvim.current.window.cursor
         self.log.debug_gui("listProjects -> mutex locked")
         try:
             # self.nvim.command('setlocal ma')
@@ -167,7 +168,7 @@ class SideBar:
                     if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project])):
                         self.bufferappend("   msg: "+project['msg'])
                     if self.cursorAt([project]):
-                        self.bufferappend("   state: "+("wait for input" if "await" not in project or not project["await"] else "server ..."))
+                        self.bufferappend("   awaits: "+("↑" if "await" not in project or not project["await"] else "↓"))
                         self.bufferappend("   source: "+project['source'])
                         self.bufferappend("   owner: "+project['owner']['first_name']+" "+project['owner']['last_name'])
                         self.bufferappend("   last change: "+project['lastUpdated'])
