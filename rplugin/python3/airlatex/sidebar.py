@@ -12,9 +12,9 @@ def catchException(fn):
         try:
             return fn(self, *args, **kwargs)
         except Exception as e:
-            self.log.error(str(e))
-            # self.nvim.err_write(traceback.format_exc(e)+"\n")
-            self.nvim.err_write(str(e)+"\n")
+            # self.log.error(str(e))
+            # self.nvim.err_write(str(e)+"\n")
+            self.log.exception(str(e))
     return wrapped
 
 class SideBar:

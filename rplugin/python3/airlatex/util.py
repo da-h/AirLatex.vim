@@ -14,7 +14,7 @@ import logging
 logging_settings={
     "level": "NOTSET",
     "file": "AirLatex.log",
-    "gui": False
+    "gui": True
 }
 
 def getLogger(name):
