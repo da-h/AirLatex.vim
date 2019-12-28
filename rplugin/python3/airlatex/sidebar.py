@@ -1,6 +1,7 @@
 import pynvim
 from time import gmtime, strftime
-from threading import Thread, RLock
+from threading import Thread, currentThread
+from asyncio import Queue, Lock
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import getLogger
 import traceback
@@ -25,17 +26,21 @@ class SideBar:
         self.lastUpdate = gmtime()
         self.buffer = None
         self.buffer_write_i = 0
-        self.buffer_mutex = RLock()
         self.cursorPos = []
         self.log = getLogger(__name__)
         self.log.debug_gui("SideBar initialized.")
         self.cursor = (4,0)
+        self.refresh_queue = Queue()
+        self.refresh_lock = Lock()
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
 
+        self.nvim.loop.create_task(self.flush_refresh())
+
     @catchException
     def cleanup(self):
+        # self.refresh_thread.do_run = False
         self.airlatex.session.cleanup(self.nvim)
 
 
@@ -43,14 +48,39 @@ class SideBar:
     # GUI Drawing #
     # ----------- #
 
+    # @catchException
+    async def flush_refresh(self):
+        try:
+            self.log.debug_gui("flush_refresh() -> started loop")
+
+            # direct sending
+            while True:
+                arg = await self.refresh_queue.get()
+                self.log.debug("flush_refresh() -> called")
+
+                # flush also all other waiting triggerRefresh-Calls
+                num = self.refresh_queue.qsize()
+                for i in range(num):
+                    arg = await self.refresh_queue.get()
+
+                # in case something happend during drawing
+                # if num > 0:
+                #     self.refresh_queue.put(True)
+
+                await self.refresh_lock.acquire()
+                self.nvim.async_call(self.listProjects, (True))
+                # await self.refresh_lock.release()
+        except Exception as e:
+            self.log.exception(str(e))
+
     @catchException
-    def triggerRefresh(self):
-        self.log.debug_gui("triggerRefresh()")
-        self.listProjects(overwrite=True)
+    async def triggerRefresh(self):
+        self.log.debug("triggerRefresh() -> event called")
+        await self.refresh_queue.put(True)
 
     @catchException
     def updateStatus(self):
-        if self.airlatex.session:
+        if self.airlatex.session and hasattr(self,'statusline'):
             self.log.debug_gui("updateStatus()")
             # self.nvim.command('setlocal ma')
             self.statusline[0] = self.statusline[0][:15] + self.airlatex.session.status
@@ -76,7 +106,10 @@ class SideBar:
     def initGUI(self):
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
-        self.listProjects()
+        self.refresh_queue.put(False)
+        self.listProjects(False)
+        # self.nvim.async_call(self.listProjects, (False))
+        # self.nvim.loop.create_task(self.listProjects(False))
 
     @catchException
     def initSidebarBuffer(self):
@@ -125,10 +158,8 @@ class SideBar:
     @catchException
     def listProjects(self, overwrite=False):
         self.log.debug_gui("listProjects(%s)" % str(overwrite))
-        self.buffer_mutex.acquire()
         if self.buffer == self.nvim.current.window.buffer:
             self.cursor = self.nvim.current.window.cursor
-        self.log.debug_gui("listProjects -> mutex locked")
         try:
             # self.nvim.command('setlocal ma')
             self.cursorPos = []
@@ -192,8 +223,10 @@ class SideBar:
             self.log.error(traceback.format_exc(e))
             self.nvim.err_write(traceback.format_exc(e)+"\n")
         finally:
-            self.buffer_mutex.release()
-            self.log.debug_gui("listProjects -> mutex released")
+            self.nvim.loop.create_task(self._refresh_lock_release())
+
+    async def _refresh_lock_release(self):
+        await self.refresh_lock.release()
 
     @catchException
     def listProjectStructure(self, rootFolder, pos, indent=0):

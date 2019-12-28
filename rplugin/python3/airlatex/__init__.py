@@ -45,7 +45,7 @@ class AirLatex:
 
     @pynvim.function('AirLatex_SidebarRefresh', sync=False)
     def sidebarRefresh(self, args):
-        self.sidebar.triggerRefresh()
+        self.nvim.loop.create_task(self.sidebar.triggerRefresh())
 
     @pynvim.function('AirLatex_SidebarUpdateStatus', sync=True)
     def sidebarStatus(self, args):

@@ -20,7 +20,7 @@ def catchException(fn):
         try:
             return fn(self, nvim, *args, **kwargs)
         except Exception as e:
-            self.log.error(str(e))
+            self.log.exception(str(e))
             nvim.err_write(str(e)+"\n")
             raise e
     return wrapped
