@@ -126,7 +126,8 @@ class AirLatexProject:
                         "user_id": self.used_id
                     },
                     "op": ops_buffer,
-                    "v": document["version"]
+                    "v": document["version"],
+                    "lastV": document["version"]-1
                 }
             ]
         }, event=event)
