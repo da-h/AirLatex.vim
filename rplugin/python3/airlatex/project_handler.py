@@ -331,7 +331,7 @@ class AirLatexProject:
                     elif cmd == "applyOtUpdate":
                         id = request["args"][0]
 
-                        # increase version as update was accepted
+                        # version increase should be before next event
                         self.documents[id]["version"] += 1
 
                         # flush next

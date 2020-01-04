@@ -169,13 +169,16 @@ class DocumentBuffer:
 
         # adapt version
         if "v" in ops:
+            self.log.debug("'v':"+str(self.document["version"]))
             v = ops["v"]
-            if v > self.document["version"]:
-                self.document["version"] = v
+            if v >= self.document["version"]:
+                self.document["version"] = v+1
+            self.log.debug("'v':"+str(self.document["version"]))
 
         # do nothing if no op included
         if not 'op' in ops:
             return
+        self.log.debug("got ops:"+str(ops))
         ops = ops['op']
 
         # async execution
