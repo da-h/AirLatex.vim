@@ -110,7 +110,7 @@ class DocumentBuffer:
             elif op[0] == "insert":
                 s = "\n".join(self.buffer[op[3]:op[4]])
                 if op[1] == len(self.buffer):
-                    p = pos[-1]
+                    p = pos[-2] - 1
                     s = "\n" + s
                 else:
                     p = pos[op[1]]
@@ -121,7 +121,7 @@ class DocumentBuffer:
             elif op[0] == "delete":
                 s = "\n".join(self.saved_buffer[op[1]:op[2]])
                 if op[1] == len(self.buffer):
-                    p = pos[-1]
+                    p = pos[-2] - 1
                     s = "\n" + s
                 else:
                     p = pos[op[1]]
