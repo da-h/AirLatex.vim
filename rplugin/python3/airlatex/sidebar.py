@@ -1,7 +1,7 @@
 import pynvim
 from time import gmtime, strftime
 from threading import Thread, currentThread
-from asyncio import Queue, Lock
+from asyncio import Queue, Lock, sleep
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import getLogger
 import traceback
@@ -41,7 +41,7 @@ class SideBar:
     @catchException
     def cleanup(self):
         # self.refresh_thread.do_run = False
-        self.airlatex.session.cleanup(self.nvim)
+        self.airlatex.session.cleanup()
 
 
     # ----------- #
@@ -59,24 +59,33 @@ class SideBar:
                 self.log.debug("flush_refresh() -> called")
 
                 # flush also all other waiting triggerRefresh-Calls
-                num = self.refresh_queue.qsize()
-                for i in range(num):
-                    arg = await self.refresh_queue.get()
-
-                # in case something happend during drawing
-                # if num > 0:
+                arg_new = False
+                # num = self.refresh_queue.qsize()
+                # for i in range(num):
+                #     arg2 = await self.refresh_queue.get()
+                #     arg_new = arg_new or arg2
+                #
+                # # in case something happend during drawing
+                # if num > 0 and arg_new:
                 #     self.refresh_queue.put(True)
 
-                await self.refresh_lock.acquire()
-                self.nvim.async_call(self.listProjects, (True))
-                # await self.refresh_lock.release()
+                self.log.debug_gui("flush(%s)" % str(arg))
+                if arg or arg_new:
+                    await self.refresh_lock.acquire()
+                    self.nvim.async_call(self.listProjects, (True))
+                    self.log.debug("flush_refresh() -> done")
+                else:
+                    # self.nvim.call("AirLatex_SidebarRefresh()")
+                    # self.nvim.call('AirLatex_SidebarUpdateStatus')
+                    self.nvim.async_call(self.updateStatus)
+                    # self.updateStatus()
         except Exception as e:
             self.log.exception(str(e))
 
     @catchException
-    async def triggerRefresh(self):
+    async def triggerRefresh(self, all=True):
         self.log.debug("triggerRefresh() -> event called")
-        await self.refresh_queue.put(True)
+        await self.refresh_queue.put(all)
 
     @catchException
     def updateStatus(self):
@@ -85,6 +94,7 @@ class SideBar:
             # self.nvim.command('setlocal ma')
             self.statusline[0] = self.statusline[0][:15] + self.airlatex.session.status
             # self.nvim.command('setlocal noma')
+        # self.nvim.loop.create_task(self._refresh_lock_release())
 
     @catchException
     def bufferappend(self, arg, pos=[]):
@@ -305,7 +315,7 @@ class SideBar:
                             project["handler"].disconnect()
                     self.triggerRefresh()
                 else:
-                    self.airlatex.session.connectProject(self.nvim, project)
+                    self.airlatex.session.connectProject(project)
 
         elif not isinstance(self.cursorPos[-1], dict):
             pass

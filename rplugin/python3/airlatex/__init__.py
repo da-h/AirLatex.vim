@@ -3,7 +3,6 @@ import sys
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
-from threading import Thread
 from airlatex.util import logging_settings
 
 
@@ -32,24 +31,21 @@ class AirLatex:
         # ensure session to exist
         if not self.session:
             DOMAIN = self.nvim.eval("g:airlatex_domain")
-            def initSession(self):
-                nvim = pynvim.attach("socket",path=self.servername)
-                try:
-                    self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar)
-                    self.session.login(nvim)
-                except Exception as e:
-                    self.log.error(str(e))
-                    nvim.out_write(str(e)+"\n")
-            self.session_thread = Thread(target=initSession,args=(self,), daemon=True)
-            self.session_thread.start()
+            try:
+                self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, self.nvim)
+                self.nvim.loop.create_task(self.session.login())
+            except Exception as e:
+                self.sidebar.log.error(str(e))
+                self.nvim.out_write(str(e)+"\n")
 
     @pynvim.function('AirLatex_SidebarRefresh', sync=False)
     def sidebarRefresh(self, args):
         self.nvim.loop.create_task(self.sidebar.triggerRefresh())
 
-    @pynvim.function('AirLatex_SidebarUpdateStatus', sync=True)
+    @pynvim.function('AirLatex_SidebarUpdateStatus', sync=False)
     def sidebarStatus(self, args):
-        self.sidebar.updateStatus()
+        self.nvim.loop.create_task(self.sidebar.updateStatus())
+        # self.sidebar.updateStatus()
 
     @pynvim.function('AirLatex_ProjectEnter', sync=True)
     def projectEnter(self, args):
