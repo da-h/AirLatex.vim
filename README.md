@@ -1,7 +1,8 @@
 AirLatex.vim
 ============
 
-**Note** This Work is currently in Progress. Please use it right now only for testing purposes.
+**Note** This Work is currently in Progress. Please use it right now only for testing purposes.  
+**Notes regarding Vim 8 support**: Vim 8 will be supported in the future, however i could not make it work completely, yet. If you need this feature feel free to contribute. (See `vim8` branch for current state.) ;)
 
 ![](screenshot.png)
 
