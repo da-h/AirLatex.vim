@@ -14,7 +14,7 @@ Install
 2. Install the Vim Plugin itself
     Using **Vim Plug**:
     ```
-    Plug 'da-h/AirLatex.vim'
+	Plug 'da-h/AirLatex.vim', {'do': ':UpdateRemotePlugins'}
 
     " optional: set server name
     let g:airlatex_domain="www.sharelatex.com"
