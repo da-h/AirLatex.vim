@@ -31,7 +31,7 @@ class AirLatex:
 
         # ensure session to exist
         if not self.session:
-            DOMAIN = self.nvim.eval("g:airlatex_domain")
+            DOMAIN = self.nvim.eval("g:AirlatexDomain")
             def initSession(self):
                 nvim = pynvim.attach("socket",path=self.servername)
                 try:

@@ -26,6 +26,11 @@ let g:AirLatexArrowOpen="▾"
 let g:AirLatexWinPos="left"
 let g:AirLatexWinSize=41
 
+
+if !exists("g:AirlatexDomain")
+    let g:AirlatexDomain="www.overleaf.com"
+endif
+
 if !exists("g:AirLatexLogLevel")
     let g:AirLatexLogLevel="NOTSET"
 endif
