@@ -17,6 +17,8 @@ syn match AirLatexStatusValue    #:\zs.\+# contained containedin=AirLatexStatus
 syn match AirLatexStatusOnline   #Online# contained containedin=AirLatexStatusValue
 syn match AirLatexStatusOffline  #Offline# contained containedin=AirLatexStatusValue
 
+syn match AirLatexMenuEntry  #press \[\w\]#
+
 
 hi def link AirLatexTitle Title
 hi def link AirLatexProjLine Special
@@ -34,3 +36,5 @@ hi def link AirLatexStatus Function
 hi def link AirLatexStatusOnline String
 hi def link AirLatexStatusOffline Todo
 hi def link AirLatexStatusValue Number
+
+hi def link AirLatexMenuEntry Title

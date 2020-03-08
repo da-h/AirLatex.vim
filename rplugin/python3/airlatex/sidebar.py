@@ -5,6 +5,7 @@ from asyncio import Queue, Lock
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import getLogger
 import traceback
+import webbrowser
 
 
 import traceback
@@ -40,8 +41,8 @@ class SideBar:
 
     @catchException
     def cleanup(self):
-        # self.refresh_thread.do_run = False
-        self.airlatex.session.cleanup(self.nvim)
+        if self.airlatex.session:
+            self.airlatex.session.cleanup(self.nvim)
 
 
     # ----------- #
@@ -166,9 +167,11 @@ class SideBar:
             if self.airlatex.session:
                 projectList = self.airlatex.session.projectList()
                 status = self.airlatex.session.status
+                menu = self.airlatex.session.menu
             else:
                 projectList = []
                 status = "Starting Session"
+                menu = []
 
             # Display Header
             if not overwrite or True:
@@ -207,6 +210,11 @@ class SideBar:
                             self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+project['lastUpdatedBy']['last_name'])
 
             # Info
+            for mtext in menu:
+                if isinstance(mtext, tuple):
+                    self.bufferappend("  "+mtext[0],[mtext[1]])
+                else:
+                    self.bufferappend("  "+mtext)
             self.bufferappend("  ")
             self.bufferappend("  ")
             self.bufferappend("  ")
@@ -280,7 +288,7 @@ class SideBar:
 
     @catchException
     def cursorAction(self, key="enter"):
-        self.log.debug_gui("cursorAction(%s)" % key)
+        self.log.debug_gui(("cursorAction(%s)" % key)+" cursor At:"+str(self.cursorPos))
 
         if not isinstance(self.cursorPos, list):
             pass
@@ -293,6 +301,17 @@ class SideBar:
             if self.cursorPos[0] == "disconnect":
                 if self.airlatex.session:
                     self.airlatex.session.cleanup(self.nvim)
+
+            # reconnect
+            if self.cursorPos[0] == "reconnect":
+                if self.airlatex.session:
+                    self.airlatex.session.cleanup(self.nvim)
+                    self.airlatex.session.login(None)
+
+            # open browser
+            elif self.cursorPos[0] == "openbrowser":
+                DOMAIN = self.nvim.eval("g:AirlatexDomain")
+                webbrowser.open_new(DOMAIN)
 
             # else is project
             elif not isinstance(self.cursorPos[0], str):

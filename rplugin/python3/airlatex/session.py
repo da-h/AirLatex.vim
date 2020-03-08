@@ -11,7 +11,6 @@ from airlatex.util import _genTimeStamp, getLogger
 # from project_handler import AirLatexProject # FOR DEBUG MODE
 # from util import _genTimeStamp # FOR DEBUG MODE
 
-cj = browser_cookie3.load()
 
 
 import traceback
@@ -38,6 +37,7 @@ class AirLatexSession:
         self.cached_projectList = []
         self.projectThreads = []
         self.status = ""
+        self.menu = []
         self.log = getLogger(__name__)
 
     @catchException
@@ -54,17 +54,20 @@ class AirLatexSession:
     def login(self, nvim):
         self.log.debug("login()")
         if not self.authenticated:
+            self.cj = browser_cookie3.load()
             self.updateStatus(nvim, "Connecting")
             # check if cookie found by testing if projects redirects to login page
             try:
-                redirect  = self.httpHandler.get(self.url + "/projects", cookies=cj)
+                redirect  = self.httpHandler.get(self.url + "/projects", cookies=self.cj)
                 if len(redirect.history) == 0:
                     self.authenticated = True
                     self.updateProjectList(nvim)
                     return True
                 else:
+                    self.authenticated = False
                     return False
             except Exception as e:
+                self.authenticated = False
                 self.updateStatus(nvim, "Connection failed: "+str(e))
         else:
             return False
@@ -79,7 +82,9 @@ class AirLatexSession:
         self.log.debug("updateProjectList()")
         if self.authenticated:
 
-            def loading(self, nvim):
+            def loading(self,nvim):
+                if not nvim:
+                    nvim = pynvim.attach("socket",path=self.servername)
                 i = 0
                 t = currentThread()
                 while getattr(t, "do_run", True):
@@ -96,7 +101,17 @@ class AirLatexSession:
             pos_script_2 = projectPage.find(">", pos_script_1 + 20)
             pos_script_close = projectPage.find("</script", pos_script_2 + 1)
             if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
+                self.menu = [
+                    "Error: Cannot login to:", "    "+self.domain,
+                    "Did you login first in your Browser?",
+                    "   (Firefox or Chrome)",
+                    "",
+                    ("press [O] to open browser","openbrowser"),
+                    ("press [R] to retry connecting","reconnect")
+                ]
+                self.authenticated = False
                 self.updateStatus(nvim, "Offline. Please Login.")
+                self.triggerRefresh(nvim)
                 return []
             data = projectPage[pos_script_2+1:pos_script_close]
             data = json.loads(data)
