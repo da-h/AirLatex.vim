@@ -28,7 +28,6 @@ class AirLatexProject:
         self.msg_queue = msg_queue
         self.msg_thread = thread
         self.ioloop = IOLoop()
-        self.url = url
         self.used_id = used_id
         self.project = project
         self.url = url
@@ -222,6 +221,7 @@ class AirLatexProject:
     def connect(self):
         try:
             self.project["connected"] = True
+            self.log.debug("Websocket Connecting to "+self.url)
             self.ws = yield websocket_connect(self.url)
         except Exception as e:
             self.sidebarMsg("Connection Error: "+str(e))
