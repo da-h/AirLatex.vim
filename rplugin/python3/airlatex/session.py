@@ -69,18 +69,18 @@ class AirLatexSession:
             self.log.debug("Checking Browser '%s' for Cookies at directory '%s'." % (browser, cookiedir))
 
             if browser == "auto":
-                cj = browser_cookie3.load(cookiedir)
+                self.cj = browser_cookie3.load(cookiedir)
             elif browser.lower() == "firefox":
-                cj = browser_cookie3.firefox(cookiedir)
+                self.cj = browser_cookie3.firefox(cookiedir)
             elif browser.lower() == "chrome" or browser.lower() == "chromium":
-                cj = browser_cookie3.chrome(cookiedir)
+                self.cj = browser_cookie3.chrome(cookiedir)
             else:
                 raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
 
 
             # check if cookie found by testing if projects redirects to login page
             try:
-                redirect  = self.httpHandler.get(self.url + "/projects", cookies=cj)
+                redirect  = self.httpHandler.get(self.url + "/projects", cookies=self.cj)
                 if len(redirect.history) == 0:
                     self.authenticated = True
                     self.updateProjectList(nvim)
@@ -113,7 +113,7 @@ class AirLatexSession:
             thread = Thread(target=loading, args=(self,nvim), daemon=True)
             thread.start()
 
-            projectPage = self.httpHandler.get(self.url + "/project").text
+            projectPage = self.httpHandler.get(self.url + "/project", cookies=self.cj).text
             thread.do_run = False
             pos_script_1  = projectPage.find("<script id=\"data\"")
             pos_script_2 = projectPage.find(">", pos_script_1 + 20)
@@ -204,8 +204,9 @@ class AirLatexSession:
 
             # To establish a websocket connection
             # the client must query for a sec url
-            self.httpHandler.get(self.url + "/project")
-            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp)
+            self.httpHandler.get(self.url + "/project", cookies=self.cj)
+            # channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp)
+            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp, cookies=self.cj)
             self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
             wsChannel = channelInfo.text[0:channelInfo.text.find(":")]
             self.log.debug("Websocket wsChannel '%s'"%wsChannel)
