@@ -34,8 +34,18 @@ endif
 if !exists("g:AirLatexLogLevel")
     let g:AirLatexLogLevel="NOTSET"
 endif
+
 if !exists("g:AirLatexLogFile")
     let g:AirLatexLogFile="AirLatex.log"
 endif
+
+if !exists("g:AirLatexCookieBrowser")
+    let g:AirLatexCookieBrowser="auto"
+endif
+
+if !exists("g:AirLatexCookieDir")
+    let g:AirLatexCookieDir="auto"
+endif
+
 
 " vim: set sw=4 sts=4 et fdm=marker:

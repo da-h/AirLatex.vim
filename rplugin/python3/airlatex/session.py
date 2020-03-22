@@ -5,13 +5,12 @@ import json
 import time
 from threading import Thread, currentThread
 from queue import Queue
+from os.path import expanduser
 import re
 from airlatex.project_handler import AirLatexProject
 from airlatex.util import _genTimeStamp, getLogger
 # from project_handler import AirLatexProject # FOR DEBUG MODE
 # from util import _genTimeStamp # FOR DEBUG MODE
-
-cj = browser_cookie3.load()
 
 
 import traceback
@@ -55,6 +54,30 @@ class AirLatexSession:
         self.log.debug("login()")
         if not self.authenticated:
             self.updateStatus(nvim, "Connecting")
+
+            browser   = nvim.eval("g:AirLatexCookieBrowser")
+
+            # guess cookie dir (browser_cookie3 does that already mostly)
+            cookiedir = nvim.eval("g:AirLatexCookieDir")
+            if cookiedir == "auto":
+                if browser == "chromium":
+                    cookiedir = "~/.config/chromium/Default/Cookies"
+                else:
+                    cookiedir = ""
+            cookiedir = expanduser(cookiedir)
+
+            self.log.debug("Checking Browser '%s' for Cookies at directory '%s'." % (browser, cookiedir))
+
+            if browser == "auto":
+                cj = browser_cookie3.load(cookiedir)
+            elif browser.lower() == "firefox":
+                cj = browser_cookie3.firefox(cookiedir)
+            elif browser.lower() == "chrome" or browser.lower() == "chromium":
+                cj = browser_cookie3.chrome(cookiedir)
+            else:
+                raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
+
+
             # check if cookie found by testing if projects redirects to login page
             try:
                 redirect  = self.httpHandler.get(self.url + "/projects", cookies=cj)
