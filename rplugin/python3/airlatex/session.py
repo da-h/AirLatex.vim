@@ -9,8 +9,6 @@ from os.path import expanduser
 import re
 from airlatex.project_handler import AirLatexProject
 from airlatex.util import _genTimeStamp, getLogger
-# from project_handler import AirLatexProject # FOR DEBUG MODE
-# from util import _genTimeStamp # FOR DEBUG MODE
 
 
 import traceback
@@ -214,29 +212,3 @@ class AirLatexSession:
 
 
 
-# for debugging
-if __name__ == "__main__":
-    import asyncio
-    from mock import Mock
-    import os
-    DOMAIN = os.environ["DOMAIN"]
-    sidebar = Mock()
-    nvim = Mock()
-    pynvim = Mock()
-    async def main():
-        sl = AirLatexSession(DOMAIN, None, sidebar)
-        sl.login(nvim)
-        project = sl.projectList()[1]
-        print(">>>>",project)
-        sl.connectProject(nvim, project)
-        time.sleep(3)
-        # print(">>>",project)
-        doc = project["rootFolder"][0]["docs"][0]
-        project["handler"].joinDocument(doc)
-        time.sleep(6)
-        print(">>>> sending ops")
-        # project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
-        # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
-        # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
-
-    asyncio.run(main())

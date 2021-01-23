@@ -6,8 +6,6 @@ import re
 from itertools import count
 import json
 from airlatex.util import _genTimeStamp, getLogger
-# from util import _genTimeStamp # FOR DEBUG MODE
-# from mock import Mock # FOR DEBUG MODE
 import time
 from tornado.queues import Queue
 from tornado.locks import Lock, Event

@@ -45,19 +45,23 @@ class AirLatex:
 
     @pynvim.function('AirLatex_SidebarRefresh', sync=False)
     def sidebarRefresh(self, args):
-        self.nvim.loop.create_task(self.sidebar.triggerRefresh())
+        if self.sidebar:
+            self.nvim.loop.create_task(self.sidebar.triggerRefresh())
 
     @pynvim.function('AirLatex_SidebarUpdateStatus', sync=True)
     def sidebarStatus(self, args):
-        self.sidebar.updateStatus()
+        if self.sidebar:
+            self.sidebar.updateStatus()
 
     @pynvim.function('AirLatex_ProjectEnter', sync=True)
     def projectEnter(self, args):
-        self.sidebar.cursorAction()
+        if self.sidebar:
+            self.sidebar.cursorAction()
 
     @pynvim.function('AirLatex_ProjectLeave', sync=True)
     def projectLeave(self, args):
-        self.sidebar.cursorAction("del")
+        if self.sidebar:
+            self.sidebar.cursorAction("del")
 
     # @pynvim.command('AirLatex_UpdatePos', nargs=0, sync=True)
     # def projectEnter(self):
@@ -65,13 +69,12 @@ class AirLatex:
 
     @pynvim.function('AirLatex_Close', sync=True)
     def sidebarClose(self, args):
-        self.sidebar.cleanup()
-        self.sidebar = None
+        if self.sidebar:
+            self.sidebar.cleanup()
+            self.sidebar = None
 
     @pynvim.function('AirLatex_WriteBuffer', sync=True)
     def writeBuffer(self, args):
         buffer = self.nvim.current.buffer
         if buffer in DocumentBuffer.allBuffers:
             DocumentBuffer.allBuffers[buffer].writeBuffer()
-
-
