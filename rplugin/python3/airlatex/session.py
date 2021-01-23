@@ -3,6 +3,7 @@ import browser_cookie3
 import requests
 import json
 import time
+import tempfile
 from threading import Thread, currentThread
 from queue import Queue
 from os.path import expanduser
@@ -117,7 +118,9 @@ class AirLatexSession:
             pos_script_2 = projectPage.find(">", pos_script_1 + 20)
             pos_script_close = projectPage.find("</script", pos_script_2 + 1)
             if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
-                self.updateStatus(nvim, "Offline. Please Login.")
+                with tempfile.NamedTemporaryFile(delete=False) as f:
+                    f.write(projectPage.encode())
+                    self.updateStatus(nvim, "Offline. Please Login. I saved the webpage '%s' I got under %s" % (self.url, f.name))
                 return []
             data = projectPage[pos_script_2+1:pos_script_close]
             data = json.loads(data)
