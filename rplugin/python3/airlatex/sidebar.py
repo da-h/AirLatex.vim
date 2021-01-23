@@ -106,7 +106,7 @@ class SideBar:
     def initGUI(self):
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
-        self.refresh_queue.put(False)
+        # self.refresh_queue.put(False)
         self.listProjects(False)
         # self.nvim.async_call(self.listProjects, (False))
         # self.nvim.loop.create_task(self.listProjects(False))
