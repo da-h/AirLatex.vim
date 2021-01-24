@@ -199,7 +199,10 @@ class SideBar:
                     if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project])):
                         self.bufferappend("   msg: "+project['msg'])
                     if self.cursorAt([project]):
-                        self.bufferappend("   awaits: "+("↑" if "await" not in project or not project["await"] else "↓"))
+                        if "await" not in project:
+                            self.bufferappend("   awaits: [enter to connect]")
+                        else:
+                            self.bufferappend("   awaits: "+("↑" if not project["await"] else "↓"))
                         self.bufferappend("   source: "+project['source'])
                         self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
                         self.bufferappend("   last change: "+project['lastUpdated'])
