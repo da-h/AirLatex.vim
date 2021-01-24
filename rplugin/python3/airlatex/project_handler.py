@@ -9,6 +9,7 @@ from airlatex.util import _genTimeStamp, getLogger
 import time
 from tornado.queues import Queue
 from tornado.locks import Lock, Event
+from logging import DEBUG
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -236,7 +237,7 @@ class AirLatexProject:
                 #     self.sidebarMsg("Connection Closed")
                 #     self.ws = None
                 #     break
-                self.log.debug(msg)
+                self.log.debug("answer: "+msg)
 
                 # parse the code
                 code, await_id, await_mult, answer_id, answer_mult, data = codere.match(msg).groups()
@@ -317,6 +318,8 @@ class AirLatexProject:
                     # joinProject => server lists project information
                     if cmd == "joinProject":
                         project_info = data[1]
+                        if self.log.level == DEBUG:
+                            self.log.debug(json.dumps(project_info))
                         self.project.update(project_info)
                         self.project["open"] = True
                         self.triggerSidebarRefresh()
