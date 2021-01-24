@@ -77,15 +77,20 @@ class AirLatexSession:
             else:
                 raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
 
-
             # check if cookie found by testing if projects redirects to login page
             try:
+                self.log.debug("Got cookie.")
                 redirect  = self.httpHandler.get(self.url + "/projects", cookies=self.cj)
                 if len(redirect.history) == 0:
+                    self.log.debug("Got project list")
                     self.authenticated = True
                     self.updateProjectList(nvim)
                     return True
                 else:
+                    self.log.debug("Could not fetch '%s/project'. Response chain: %s" % (self.url, str(redirect)))
+                    with tempfile.NamedTemporaryFile(delete=False) as f:
+                        f.write(redirect.text.encode())
+                        self.updateStatus(nvim, "Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name)
                     return False
             except Exception as e:
                 self.updateStatus(nvim, "Connection failed: "+str(e))
