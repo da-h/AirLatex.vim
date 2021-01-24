@@ -1,5 +1,5 @@
 
-from airlatex import AirLatex, AirLatexSession, SideBar
+from airlatex import AirLatex, AirLatexSession, SideBar, DocumentBuffer
 
 
 # for debugging, start nvim with
@@ -8,6 +8,7 @@ if __name__ == "__main__":
     import asyncio
     import os
     from pynvim import attach
+    import time
     DOMAIN = os.environ["DOMAIN"]
     nvim = attach('socket', path='/tmp/nvim')
     airlatex = AirLatex(nvim)
@@ -16,21 +17,16 @@ if __name__ == "__main__":
 
     session = AirLatexSession(DOMAIN, servername, airlatex.sidebar, https=False)
     session.login(nvim)
-
-    # async def main():
-    #     sl = AirLatexSession(DOMAIN, None, sidebar)
-    #     sl.login(nvim)
-    #     project = sl.projectList()[1]
-    #     print(">>>>",project)
-    #     sl.connectProject(nvim, project)
-    #     time.sleep(3)
-    #     # print(">>>",project)
-    #     doc = project["rootFolder"][0]["docs"][0]
-    #     project["handler"].joinDocument(doc)
-    #     time.sleep(6)
-    #     print(">>>> sending ops")
-    #     # project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
-    #     # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
-    #     # project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
-#
-    # asyncio.run(main())
+    project = session.projectList()[0]
+    print(">>>>",project)
+    session.connectProject(nvim, project)
+    time.sleep(2)
+    doc = project["rootFolder"][0]["docs"][0]
+    doc["handler"] = project["handler"]
+    doc = DocumentBuffer([doc], nvim)
+    project["handler"].joinDocument(doc)
+    time.sleep(2)
+    print(">>>> sending ops")
+    project["handler"].sendOps(doc, [{'p': 0, 'i': '0abB\n'}])
+    project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
+    project["handler"].sendOps(doc, [{'p': 0, 'i': 'def\n'}])
