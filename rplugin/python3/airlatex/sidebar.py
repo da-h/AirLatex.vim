@@ -201,10 +201,10 @@ class SideBar:
                     if self.cursorAt([project]):
                         self.bufferappend("   awaits: "+("↑" if "await" not in project or not project["await"] else "↓"))
                         self.bufferappend("   source: "+project['source'])
-                        self.bufferappend("   owner: "+project['owner']['first_name']+" "+project['owner']['last_name'])
+                        self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
                         self.bufferappend("   last change: "+project['lastUpdated'])
                         if "lastUpdatedBy" in project:
-                            self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+project['lastUpdatedBy']['last_name'])
+                            self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+(" "+project['lastUpdatedBy']['last_name'] if "last_name" in project["lastUpdatedBy"] else ""))
 
             # Info
             self.bufferappend("  ")
