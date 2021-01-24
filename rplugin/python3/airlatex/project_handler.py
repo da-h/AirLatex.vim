@@ -111,22 +111,26 @@ class AirLatexProject:
 
         # actually send operations
         source = document["_id"]
+
+        obj_to_send = {
+            "doc": document["_id"],
+            # "meta": {
+            #     "source": source,
+            #     "ts": _genTimeStamp(),
+            #     "user_id": self.used_id
+            # },
+            "op": ops_buffer,
+            "v": document["version"],
+            "lastV": document["version"]-1
+        }
+        if document["buffer"].content_hash:
+            obj_to_send["hash"] = document["buffer"].content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
+
         self.send("cmd",{
             "name":"applyOtUpdate",
             "args": [
                 document["_id"],
-                {
-                    "doc": document["_id"],
-                    "meta": {
-                        # "hash": hash, # it feels like they do not use the hash anyway (who nows what hash they need) ;)
-                        "source": source,
-                        "ts": _genTimeStamp(),
-                        "user_id": self.used_id
-                    },
-                    "op": ops_buffer,
-                    "v": document["version"],
-                    "lastV": document["version"]-1
-                }
+                obj_to_send
             ]
         }, event=event)
         self.log.debug("ops await accept -> wait")

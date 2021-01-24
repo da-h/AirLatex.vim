@@ -2,6 +2,7 @@ import pynvim
 from difflib import SequenceMatcher
 from threading import RLock
 from airlatex.util import getLogger
+from hashlib import sha1
 
 if "allBuffers" not in globals():
     allBuffers = {}
@@ -17,6 +18,7 @@ class DocumentBuffer:
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
         self.saved_buffer = None
+        self.content_hash = None
 
     def getName(self):
         return "/".join([p["name"] for p in self.path])
@@ -157,6 +159,19 @@ class DocumentBuffer:
 
         # reverse, as last op should be applied first
         ops.reverse()
+
+        # compute sha1-hash of current buffer
+        current_len = 0
+        for row in self.buffer:
+            current_len += len(row)+1
+        current_len -= 1
+        tohash = ("blob "+str(current_len) + "\x00")
+        for b in self.buffer[:-1]:
+            tohash += b+"\n"
+        tohash += self.buffer[-1]
+        sha = sha1()
+        sha.update(tohash.encode())
+        self.content_hash = sha.hexdigest()
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
