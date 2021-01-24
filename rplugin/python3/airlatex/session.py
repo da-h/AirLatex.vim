@@ -81,7 +81,7 @@ class AirLatexSession:
             try:
                 self.log.debug("Got cookie.")
                 redirect  = self.httpHandler.get(self.url + "/projects", cookies=self.cj)
-                if len(redirect.history) == 0:
+                if redirect.ok:
                     self.log.debug("Got project list")
                     self.authenticated = True
                     self.updateProjectList(nvim)
