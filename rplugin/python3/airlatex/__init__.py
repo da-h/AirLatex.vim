@@ -32,10 +32,11 @@ class AirLatex:
         # ensure session to exist
         if not self.session:
             DOMAIN = self.nvim.eval("g:AirLatexDomain")
+            https = self.nvim.eval("g:AirLatexUseHTTPS")
             def initSession(self):
                 nvim = pynvim.attach("socket",path=self.servername)
                 try:
-                    self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar)
+                    self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, https=https)
                     self.session.login(nvim)
                 except Exception as e:
                     self.log.error(str(e))

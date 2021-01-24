@@ -26,11 +26,12 @@ def catchException(fn):
 
 ### All web page related airlatex stuff
 class AirLatexSession:
-    def __init__(self, domain, servername, sidebar):
+    def __init__(self, domain, servername, sidebar, https=True):
         self.sidebar = sidebar
         self.servername = servername
         self.domain = domain
-        self.url = "https://"+domain
+        self.https = True if https else False
+        self.url = ("https://" if https else "http://") + domain
         self.authenticated = False
         self.httpHandler = requests.Session()
         self.cached_projectList = []
@@ -211,7 +212,7 @@ class AirLatexSession:
             self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
             wsChannel = channelInfo.text[0:channelInfo.text.find(":")]
             self.log.debug("Websocket wsChannel '%s'"%wsChannel)
-            return "wss://" + self.domain + "/socket.io/1/websocket/"+wsChannel
+            return ("wss://" if self.https else "ws://") + self.domain + "/socket.io/1/websocket/"+wsChannel
 
 
 

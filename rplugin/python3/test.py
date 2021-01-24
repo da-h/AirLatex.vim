@@ -14,7 +14,7 @@ if __name__ == "__main__":
     servername = nvim.eval("v:servername")
     airlatex.openSidebar()
 
-    session = AirLatexSession(DOMAIN, servername, airlatex.sidebar)
+    session = AirLatexSession(DOMAIN, servername, airlatex.sidebar, https=False)
     session.login(nvim)
 
     # async def main():

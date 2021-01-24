@@ -47,5 +47,10 @@ if !exists("g:AirLatexCookieDir")
     let g:AirLatexCookieDir="auto"
 endif
 
+if !exists("g:AirLatexUseHTTPS")
+    let g:AirLatexUseHTTPS=1
+endif
+
+
 
 " vim: set sw=4 sts=4 et fdm=marker:
