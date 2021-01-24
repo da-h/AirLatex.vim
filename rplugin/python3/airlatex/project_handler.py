@@ -269,7 +269,6 @@ class AirLatexProject:
                     if data["name"] == "connectionAccepted":
                         self.sidebarMsg("Connection Active.")
                         self.send("cmd",{"name":"joinProject","args":[{"project_id":self.project["id"]}]})
-                        self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
 
                     # broadcastDocMeta => we ignore it at first
                     elif data["name"] == "broadcastDocMeta":
@@ -322,6 +321,7 @@ class AirLatexProject:
                             self.log.debug(json.dumps(project_info))
                         self.project.update(project_info)
                         self.project["open"] = True
+                        self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
                         self.triggerSidebarRefresh()
 
                     elif cmd == "joinDoc":
