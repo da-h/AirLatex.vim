@@ -77,6 +77,7 @@ class AirLatexProject:
                 self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
     def updateCursor(self,doc, pos):
+        event = Event()
         self.send("update",{
             "name":"clientTracking.updatePosition",
             "args": [{
@@ -84,7 +85,7 @@ class AirLatexProject:
                 "row": pos[0]-1,
                 "column": pos[1]
             }]
-        })
+        }, event=event)
 
     # wrapper for the ioloop
     def sendOps(self, document, ops=[]):
