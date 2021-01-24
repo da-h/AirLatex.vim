@@ -80,7 +80,7 @@ class AirLatexSession:
             # check if cookie found by testing if projects redirects to login page
             try:
                 self.log.debug("Got cookie.")
-                redirect  = self.httpHandler.get(self.url + "/projects", cookies=self.cj)
+                redirect  = self.httpHandler.get(self.url + "/project", cookies=self.cj)
                 if redirect.ok:
                     self.log.debug("Got project list")
                     self.authenticated = True
