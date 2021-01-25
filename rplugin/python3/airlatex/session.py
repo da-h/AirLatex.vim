@@ -76,6 +76,7 @@ class AirLatexSession:
                     self.cj.set_cookie(c)
             self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
             self.log.debug("Found cookies " + str(self.cj_str))
+
             # check if cookie found by testing if projects redirects to login page
             try:
                 self.log.debug("Got cookie.")
@@ -184,7 +185,7 @@ class AirLatexSession:
             def initProject():
                 nvim = pynvim.attach("socket",path=self.servername)
                 try:
-                    AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread)
+                    AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
                 except Exception as e:
                     self.log.error(traceback.format_exc(e))
                     nvim.err_write(traceback.format_exc(e)+"\n")

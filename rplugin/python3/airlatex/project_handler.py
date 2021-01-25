@@ -10,6 +10,7 @@ import time
 from tornado.queues import Queue
 from tornado.locks import Lock, Event
 from logging import DEBUG
+from tornado.httpclient import HTTPRequest
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -22,14 +23,16 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 
 class AirLatexProject:
 
-    def __init__(self, url, project, used_id, msg_queue, thread):
+    def __init__(self, url, project, used_id, msg_queue, thread, cookie=None):
         project["handler"] = self
+
         self.msg_queue = msg_queue
         self.msg_thread = thread
         self.ioloop = IOLoop()
         self.used_id = used_id
         self.project = project
         self.url = url
+        self.cookie = cookie
         self.command_counter = count(1)
         self.ws = None
         self.requests = {}
@@ -226,7 +229,8 @@ class AirLatexProject:
         try:
             self.project["connected"] = True
             self.log.debug("Websocket Connecting to "+self.url)
-            self.ws = yield websocket_connect(self.url)
+            request = HTTPRequest(self.url, headers={'Cookie': self.cookie})
+            self.ws = yield websocket_connect(request)
         except Exception as e:
             self.sidebarMsg("Connection Error: "+str(e))
         else:
