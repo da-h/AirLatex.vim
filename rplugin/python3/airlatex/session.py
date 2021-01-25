@@ -10,6 +10,7 @@ from os.path import expanduser
 import re
 from airlatex.project_handler import AirLatexProject
 from airlatex.util import _genTimeStamp, getLogger
+from http.cookiejar import CookieJar
 
 
 import traceback
@@ -61,14 +62,20 @@ class AirLatexSession:
             self.log.debug("Checking Browser '%s'" % browser)
 
             if browser == "auto":
-                self.cj = browser_cookie3.load()
+                cj = browser_cookie3.load()
             elif browser.lower() == "firefox":
-                self.cj = browser_cookie3.firefox()
+                cj = browser_cookie3.firefox()
             elif browser.lower() == "chrome" or browser.lower() == "chromium":
-                self.cj = browser_cookie3.chrome()
+                cj = browser_cookie3.chrome()
             else:
                 raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
 
+            self.cj = CookieJar()
+            for c in cj:
+                if c.name in ["sharelatex.sid", "overleaf_session2", "gke-route"]:
+                    self.cj.set_cookie(c)
+            self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
+            self.log.debug("Found cookies " + str(self.cj_str))
             # check if cookie found by testing if projects redirects to login page
             try:
                 self.log.debug("Got cookie.")
