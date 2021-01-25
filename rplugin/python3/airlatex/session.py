@@ -58,22 +58,14 @@ class AirLatexSession:
             browser   = nvim.eval("g:AirLatexCookieBrowser")
 
             # guess cookie dir (browser_cookie3 does that already mostly)
-            cookiedir = nvim.eval("g:AirLatexCookieDir")
-            if cookiedir == "auto":
-                if browser == "chromium":
-                    cookiedir = "~/.config/chromium/Default/Cookies"
-                else:
-                    cookiedir = ""
-            cookiedir = expanduser(cookiedir)
-
-            self.log.debug("Checking Browser '%s' for Cookies at directory '%s'." % (browser, cookiedir))
+            self.log.debug("Checking Browser '%s'" % browser)
 
             if browser == "auto":
-                self.cj = browser_cookie3.load(cookiedir)
+                self.cj = browser_cookie3.load()
             elif browser.lower() == "firefox":
-                self.cj = browser_cookie3.firefox(cookiedir)
+                self.cj = browser_cookie3.firefox()
             elif browser.lower() == "chrome" or browser.lower() == "chromium":
-                self.cj = browser_cookie3.chrome(cookiedir)
+                self.cj = browser_cookie3.chrome()
             else:
                 raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
 

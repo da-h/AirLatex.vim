@@ -43,10 +43,6 @@ if !exists("g:AirLatexCookieBrowser")
     let g:AirLatexCookieBrowser="auto"
 endif
 
-if !exists("g:AirLatexCookieDir")
-    let g:AirLatexCookieDir="auto"
-endif
-
 if !exists("g:AirLatexUseHTTPS")
     let g:AirLatexUseHTTPS=1
 endif
