@@ -23,12 +23,12 @@ Install
     
     Using **Vundle**:
     ```
-	Plug 'da-h/AirLatex.vim'
+	Plugin 'da-h/AirLatex.vim'
 
     " optional: set server name
     let g:AirLatexDomain="www.overleaf.com"
     ```
-    After installation using `:PlugInstall` run `:UpdateRemotePlugins` to register the python plugin.
+    After installation using `:PluginInstall` run `:UpdateRemotePlugins` to register the python plugin.
 3. For the login, this plugin uses [`browser_cookie3](https://github.com/borisbabic/browser_cookie3). **Please use Firefox or Chrome to login.** Browser_cookie3 will find the right cookie for the server. :)
 4. Open AirLatex in Vim with `:AirLatex`
 
