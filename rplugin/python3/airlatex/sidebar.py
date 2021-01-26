@@ -35,6 +35,7 @@ class SideBar:
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
+        self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
 
         self.nvim.loop.create_task(self.flush_refresh())
 
@@ -184,6 +185,14 @@ class SideBar:
             if projectList is not None:
                 for i,project in enumerate(projectList):
                     pos = [project]
+
+                    # skip deleted projects
+                    if "trashed" in project and project["trashed"]:
+                        continue
+
+                    # skip archived projects
+                    if "archived" in project and project["archived"] and not self.showArchived:
+                        continue
 
                     # list project structure
                     if "open" in project and project["open"]:

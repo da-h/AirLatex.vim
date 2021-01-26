@@ -47,6 +47,8 @@ if !exists("g:AirLatexUseHTTPS")
     let g:AirLatexUseHTTPS=1
 endif
 
-
+if !exists("g:AirLatexShowArchived")
+    let g:AirLatexShowArchived=0
+endif
 
 " vim: set sw=4 sts=4 et fdm=marker:
