@@ -72,6 +72,19 @@ Variable | Possible Values | Description
 `g:AirLatexLogFile` | `AirLatex.log` (default)  | Log file name. (The file appears in the folder where vim has been started, but only if the log level is greater than `NOTSET`.)
 
 
+Troubleshooting
+===============
+**Cannot login / Offline / Unauthorized.**  
+The most common solution is: “Did you turn it on and off again“. Not kidding. **Reload the project page without using the browser cache** to reset the cookies.  
+(Typically you can hit Ctrl + Shift + R to reload the page without using the cache.)
+
+More details / Debugging:
+The most common problem with this kind of problem is that the session cookies cannot be found by [browser_cookie3](https://github.com/borisbabic/browser_cookie3). If you use AirLatex' debug mode (`leg g:AirLatexLogLevel='DEBUG'`), the Log file will list all cookies that have been found. In all settings that I've tried, at least one cookie, `overleaf_session2`, is required to at least make the login work. More prominent instances (i.e. www.overleaf.com) may also require the cookie `gke-route` to be recognized. (Just check your Browser which cookies are actually needed for the login).
+
+**If you find a bug.**  
+Feel free to open an issue!
+
+
 Credits
 =======
 This plugin is a complete rework of [Vim-ShareLaTeX-Plugin](https://www.github.com/thomashn/Vim-ShareLaTeX-Plugin).  
