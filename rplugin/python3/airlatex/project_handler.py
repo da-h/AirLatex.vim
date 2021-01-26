@@ -33,6 +33,7 @@ class AirLatexProject:
         self.project = project
         self.url = url
         self.cookie = cookie
+        self.url_base = url.split("/")[2]
         self.command_counter = count(1)
         self.ws = None
         self.requests = {}
@@ -365,6 +366,10 @@ class AirLatexProject:
 
                     else:
                         self.sidebarMsg("Data not known:"+str(msg))
+
+                # answer to our request
+                elif code == "7":
+                    self.sidebarMsg("Error: Unauthorized. My guess is that your session cookies are outdated or not loaded. Typically reloading '%s/project' using the browser you used for login should reload the cookies." % self.url_base)
 
                 # unknown message
                 else:
