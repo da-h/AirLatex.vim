@@ -5,6 +5,7 @@ import json
 import time
 import tempfile
 from threading import Thread, currentThread
+from asyncio import Lock, sleep, run_coroutine_threadsafe, create_task
 from queue import Queue
 from os.path import expanduser
 import re
@@ -15,20 +16,21 @@ from http.cookiejar import CookieJar
 
 import traceback
 def catchException(fn):
-    def wrapped(self, nvim, *args, **kwargs):
+    def wrapped(self, *args, **kwargs):
         try:
-            return fn(self, nvim, *args, **kwargs)
+            return fn(self, *args, **kwargs)
         except Exception as e:
             self.log.exception(str(e))
-            nvim.err_write(str(e)+"\n")
+            self.nvim.err_write(str(e)+"\n")
             raise e
     return wrapped
 
 
 ### All web page related airlatex stuff
 class AirLatexSession:
-    def __init__(self, domain, servername, sidebar, https=True):
+    def __init__(self, domain, servername, sidebar, nvim, https=True):
         self.sidebar = sidebar
+        self.nvim = nvim
         self.servername = servername
         self.domain = domain
         self.https = True if https else False
@@ -40,8 +42,26 @@ class AirLatexSession:
         self.status = ""
         self.log = getLogger(__name__)
 
+        # guess cookie dir (browser_cookie3 does that already mostly)
+        browser   = nvim.eval("g:AirLatexCookieBrowser")
+        if browser == "auto":
+            cj = browser_cookie3.load()
+        elif browser.lower() == "firefox":
+            cj = browser_cookie3.firefox()
+        elif browser.lower() == "chrome" or browser.lower() == "chromium":
+            cj = browser_cookie3.chrome()
+        else:
+            raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
+
+        self.cj = CookieJar()
+        for c in cj:
+            if c.domain in self.url or self.url in c.domain:
+                self.log.debug("Found Cookie for domain '%s' named '%s'" % (c.domain, c.name))
+                self.cj.set_cookie(c)
+        self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
+
     @catchException
-    def cleanup(self, nvim):
+    def cleanup(self):
         self.log.debug("cleanup()")
         for p in self.cached_projectList:
             if "handler" in p:
@@ -50,50 +70,38 @@ class AirLatexSession:
             t.do_run = False
         self.projectThreads = []
 
+
+    # performs a loading animation until lock is released
+    async def _makeStatusAnimation(self, str):
+        i = 0
+        while True:
+            s = " .." if i%3 == 0 else ". ." if i%3 == 1 else ".. "
+            await self.updateStatus(s + " " + str + " " + s)
+            i += 1
+
     @catchException
-    def login(self, nvim):
+    async def login(self):
         self.log.debug("login()")
         if not self.authenticated:
-            self.updateStatus(nvim, "Connecting")
-
-            browser   = nvim.eval("g:AirLatexCookieBrowser")
-
-            # guess cookie dir (browser_cookie3 does that already mostly)
-            self.log.debug("Checking Browser '%s'" % browser)
-
-            if browser == "auto":
-                cj = browser_cookie3.load()
-            elif browser.lower() == "firefox":
-                cj = browser_cookie3.firefox()
-            elif browser.lower() == "chrome" or browser.lower() == "chromium":
-                cj = browser_cookie3.chrome()
-            else:
-                raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
-
-            self.cj = CookieJar()
-            for c in cj:
-                if c.domain in self.url or self.url in c.domain:
-                    self.log.debug("Found cookie " + str(c))
-                    self.cj.set_cookie(c)
-            self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
+            anim_status = create_task(self._makeStatusAnimation("Connecting"))
 
             # check if cookie found by testing if projects redirects to login page
             try:
-                self.log.debug("Got cookie.")
-                redirect  = self.httpHandler.get(self.url + "/project", cookies=self.cj)
+                get = lambda: self.httpHandler.get(self.url + "/project", cookies=self.cj)
+                redirect = await self.nvim.loop.run_in_executor(None, get)
+                anim_status.cancel()
                 if redirect.ok:
-                    self.log.debug("Got project list")
                     self.authenticated = True
-                    self.updateProjectList(nvim)
+                    await self.updateProjectList()
                     return True
                 else:
                     self.log.debug("Could not fetch '%s/project'. Response chain: %s" % (self.url, str(redirect)))
                     with tempfile.NamedTemporaryFile(delete=False) as f:
                         f.write(redirect.text.encode())
-                        self.updateStatus(nvim, "Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name)
+                        await self.updateStatus("Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name)
                     return False
             except Exception as e:
-                self.updateStatus(nvim, "Connection failed: "+str(e))
+                await self.updateStatus("Connection failed: "+str(e))
         else:
             return False
 
@@ -103,106 +111,104 @@ class AirLatexSession:
         return self.cached_projectList
 
     @catchException
-    def updateProjectList(self, nvim):
+    async def updateProjectList(self):
         self.log.debug("updateProjectList()")
         if self.authenticated:
+            anim_status = create_task(self._makeStatusAnimation("Loading Projects"))
 
-            def loading(self, nvim):
-                i = 0
-                t = currentThread()
-                while getattr(t, "do_run", True):
-                    s = " .." if i%3 == 0 else ". ." if i%3 == 1 else ".. "
-                    self.updateStatus(nvim, s+" Loading "+s)
-                    i += 1
-                    time.sleep(0.1)
-            thread = Thread(target=loading, args=(self,nvim), daemon=True)
-            thread.start()
-
-            projectPage = self.httpHandler.get(self.url + "/project", cookies=self.cj).text
-            thread.do_run = False
+            get = lambda: self.httpHandler.get(self.url + "/project", cookies=self.cj)
+            projectPage = (await self.nvim.loop.run_in_executor(None, get)).text
             pos_script_1  = projectPage.find("<script id=\"data\"")
             pos_script_2 = projectPage.find(">", pos_script_1 + 20)
             pos_script_close = projectPage.find("</script", pos_script_2 + 1)
+            anim_status.cancel()
+
             if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.encode())
-                    self.updateStatus(nvim, "Offline. Please Login. I saved the webpage '%s' I got under %s" % (self.url, f.name))
+                    await self.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s" % (self.url, f.name))
                 return []
             data = projectPage[pos_script_2+1:pos_script_close]
             data = json.loads(data)
             self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage)[1]
-            self.updateStatus(nvim, "Online")
+            await self.updateStatus("Online")
 
             self.cached_projectList = data["projects"]
             self.cached_projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
-            self.triggerRefresh(nvim)
+            await self.triggerRefresh()
 
     # Returns a list of airlatex projects
     @catchException
-    def connectProject(self, nvim, project):
-        if self.authenticated:
+    async def connectProject(self, project):
+        if not self.authenticated:
+            await self.UpdateStatus("Not Authenticated to connect")
+            return
 
-            # This is needed because IOLoop and pynvim interfere!
-            msg_queue = Queue()
-            msg_queue.put(("msg",None,"Connecting Project"))
-            project["msg_queue"] = msg_queue
-            def flush_queue(queue, project, servername):
-                t = currentThread()
-                nvim = pynvim.attach("socket",path=servername)
-                while getattr(t, "do_run", True):
-                    cmd, doc, data = queue.get()
-                    try:
-                        if cmd == "msg":
-                            self.log.debug("msg_queue : "+data)
-                            project["msg"] = data
-                            nvim.command("call AirLatex_SidebarRefresh()")
-                            continue
-                        elif cmd == "await":
-                            project["await"] = data
-                            nvim.command("call AirLatex_SidebarRefresh()")
-                            continue
-                        elif cmd == "refresh":
-                            self.triggerRefresh(nvim)
-                            continue
+        anim_status = create_task(self._makeStatusAnimation("Connecting to Project"))
 
-                        buf = doc["buffer"]
-                        self.log.debug("cmd="+cmd)
-                        if cmd == "applyUpdate":
-                            buf.applyUpdate(data)
-                        elif cmd == "write":
-                            buf.write(data)
-                        elif cmd == "updateRemoteCursor":
-                            buf.updateRemoteCursor(data)
-                    except Exception as e:
-                        self.log.error("Exception"+str(e))
-                        project["msg"] = "Exception:"+str(e)
-                        nvim.command("call AirLatex_SidebarRefresh()")
-            msg_thread = Thread(target=flush_queue, args=(msg_queue, project, self.servername), daemon=True)
-            msg_thread.start()
-            self.projectThreads.append(msg_thread)
-
-            # start connection
-            def initProject():
-                nvim = pynvim.attach("socket",path=self.servername)
+        # This is needed because IOLoop and pynvim interfere!
+        msg_queue = Queue()
+        msg_queue.put(("msg",None,"Connecting Project"))
+        project["msg_queue"] = msg_queue
+        def flush_queue(queue, project, servername):
+            t = currentThread()
+            self.nvim = pynvim.attach("socket",path=servername)
+            while getattr(t, "do_run", True):
+                cmd, doc, data = queue.get()
                 try:
-                    AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
+                    if cmd == "msg":
+                        self.log.debug("msg_queue : "+data)
+                        project["msg"] = data
+                        # nvim.command("call AirLatex_SidebarRefresh()")
+                        continue
+                    elif cmd == "await":
+                        project["await"] = data
+                        # nvim.command("call AirLatex_SidebarRefresh()")
+                        continue
+                    elif cmd == "refresh":
+                        # self.triggerRefresh()
+                        continue
+
+                    buf = doc["buffer"]
+                    self.log.debug("cmd="+cmd)
+                    if cmd == "applyUpdate":
+                        buf.applyUpdate(data)
+                    elif cmd == "write":
+                        buf.write(data)
+                    elif cmd == "updateRemoteCursor":
+                        buf.updateRemoteCursor(data)
                 except Exception as e:
-                    self.log.error(traceback.format_exc(e))
-                    nvim.err_write(traceback.format_exc(e)+"\n")
-            thread = Thread(target=initProject,daemon=True)
-            self.projectThreads.append(thread)
-            thread.start()
+                    self.log.error("Exception"+str(e))
+                    project["msg"] = "Exception:"+str(e)
+                    # nvim.command("call AirLatex_SidebarRefresh()")
+        msg_thread = Thread(target=flush_queue, args=(msg_queue, project, self.servername), daemon=True)
+        msg_thread.start()
+        self.projectThreads.append(msg_thread)
+
+        # start connection
+        def initProject():
+            nvim = pynvim.attach("socket",path=self.servername)
+            try:
+                AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
+            except Exception as e:
+                self.log.error(traceback.format_exc(e))
+                nvim.err_write(traceback.format_exc(e)+"\n")
+        thread = Thread(target=initProject,daemon=True)
+        self.projectThreads.append(thread)
+        thread.start()
+        anim_status.cancel()
 
     @catchException
-    def updateStatus(self, nvim, msg):
+    async def updateStatus(self, msg):
         self.log.debug_gui("updateStatus("+msg+")")
         self.status = msg
-        nvim.command("call AirLatex_SidebarUpdateStatus()")
+        await self.sidebar.triggerRefresh(False)
+        await sleep(0.1)
 
     @catchException
-    def triggerRefresh(self, nvim):
+    async def triggerRefresh(self):
         self.log.debug_gui("triggerRefresh()")
-        nvim.command("call AirLatex_SidebarRefresh()")
+        await self.sidebar.triggerRefresh()
 
     def _getWebSocketURL(self):
         if self.authenticated:

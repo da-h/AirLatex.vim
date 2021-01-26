@@ -15,8 +15,8 @@ if __name__ == "__main__":
     servername = nvim.eval("v:servername")
     airlatex.openSidebar()
 
-    session = AirLatexSession(DOMAIN, servername, airlatex.sidebar, https=False)
-    session.login(nvim)
+    session = AirLatexSession(DOMAIN, servername, airlatex.sidebar, nvim, https=False)
+    session.login()
     project = session.projectList()[0]
     print(">>>>",project)
     session.connectProject(nvim, project)
