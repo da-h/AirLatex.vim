@@ -72,10 +72,10 @@ class AirLatexSession:
 
             self.cj = CookieJar()
             for c in cj:
-                if c.name in ["sharelatex.sid", "overleaf_session2", "gke-route"]:
+                if c.domain in self.url or self.url in c.domain:
+                    self.log.debug("Found cookie " + str(c))
                     self.cj.set_cookie(c)
             self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
-            self.log.debug("Found cookies " + str(self.cj_str))
 
             # check if cookie found by testing if projects redirects to login page
             try:
