@@ -7,10 +7,10 @@ from itertools import count
 import json
 from airlatex.util import _genTimeStamp, getLogger
 import time
-from tornado.queues import Queue
 from tornado.locks import Lock, Event
 from logging import DEBUG
 from tornado.httpclient import HTTPRequest
+from asyncio import Queue
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -23,11 +23,10 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 
 class AirLatexProject:
 
-    def __init__(self, url, project, used_id, msg_queue, thread, cookie=None):
+    def __init__(self, url, project, used_id, sidebar, cookie=None):
         project["handler"] = self
 
-        self.msg_queue = msg_queue
-        self.msg_thread = thread
+        self.sidebar = sidebar
         self.ioloop = IOLoop()
         self.used_id = used_id
         self.project = project
@@ -51,8 +50,9 @@ class AirLatexProject:
         await self.connect()
         await self.ioloop.start()
 
-    def send(self,message_type,message=None,event=None):
+    async def send(self,message_type,message=None,event=None):
         if message_type == "keep_alive":
+            self.log.debug("send keep_alive")
             self.ws.write_message("2::")
             return
         assert message is not None
@@ -68,24 +68,40 @@ class AirLatexProject:
             self.requests[str(cmd_id)] = message
             self.ws.write_message(msg)
 
-    def sidebarMsg(self, msg):
-        self.msg_queue.put(("msg",None, msg))
+    async def sidebarMsg(self, msg):
+        self.log.debug("sidebarMsg: %s" % msg)
+        self.project["msg"] = msg
+        await self.sidebar.triggerRefresh()
 
-    def gui_await(self, waiting=True):
-        self.msg_queue.put(("await",None, waiting))
+    async def gui_await(self, waiting=True):
+        self.project["await"] = waiting
+        await self.sidebar.triggerRefresh()
 
-    def bufferDo(self, doc_id, command, data):
+    async def bufferDo(self, doc_id, command, data):
         if doc_id in self.documents:
-            self.msg_queue.put((command, self.documents[doc_id], data))
+            doc = self.documents[doc_id]
+            buf = doc["buffer"]
+            self.log.debug("cmd="+command)
+            if command == "applyUpdate":
+                buf.applyUpdate(data)
+            elif command == "write":
+                buf.write(data)
+            elif command == "updateRemoteCursor":
+                buf.updateRemoteCursor(data)
 
-    def updateRemoteCursor(self, cursors):
+    async def updateRemoteCursor(self, cursors):
         for cursor in cursors:
             if "row" in cursor and "column" in cursor and "doc_id" in cursor:
-                self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
+                await self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
-    def updateCursor(self,doc, pos):
+    async def triggerSidebarRefresh(self):
+        self.log.debug("triggerSidebarRefresh()")
+        await self.sidebar.triggerRefresh()
+        # self.msg_queue.put(("refresh",None,None))
+
+    async def updateCursor(self,doc, pos):
         event = Event()
-        self.send("update",{
+        await self.send("update",{
             "name":"clientTracking.updatePosition",
             "args": [{
                 "doc_id": doc["_id"],
@@ -95,8 +111,8 @@ class AirLatexProject:
         }, event=event)
 
     # wrapper for the ioloop
-    def sendOps(self, document, ops=[]):
-        self.ioloop.add_callback(self.ops_queue.put, (document, ops))
+    async def sendOps(self, document, ops=[]):
+        await self.ops_queue.put((document, ops))
 
     # actual sending of ops
     async def _sendOps(self, document, ops=[]):
@@ -111,7 +127,7 @@ class AirLatexProject:
 
         # wait if awaiting server response
         event = Event()
-        self.gui_await(True)
+        await self.gui_await(True)
         self.log.debug("ops await accept -> new request")
 
         # clean buffer for next call
@@ -134,7 +150,7 @@ class AirLatexProject:
         if document["buffer"].content_hash:
             obj_to_send["hash"] = document["buffer"].content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
 
-        self.send("cmd",{
+        await self.send("cmd",{
             "name":"applyOtUpdate",
             "args": [
                 document["_id"],
@@ -143,7 +159,7 @@ class AirLatexProject:
         }, event=event)
         self.log.debug("ops await accept -> wait")
         await event.wait()
-        self.gui_await(False)
+        await self.gui_await(False)
         self.log.debug("ops await accept -> done")
 
     # sendOps whenever events appear in queue
@@ -191,7 +207,7 @@ class AirLatexProject:
 
 
 
-    def joinDocument(self, buffer):
+    async def joinDocument(self, buffer):
 
         # register buffer in document
         # doc = buffer # FOR DEBUG MODE
@@ -206,7 +222,7 @@ class AirLatexProject:
         self.documents[doc["_id"]]["ops_buffer"] = []
 
         # regester for document-watching
-        self.send("cmd",{
+        await self.send("cmd",{
             "name":"joinDoc",
             "args": [
                 doc["_id"],
@@ -214,30 +230,27 @@ class AirLatexProject:
             ]
         })
 
-    def triggerSidebarRefresh(self):
-        self.log.debug("triggerSidebarRefresh()")
-        self.msg_queue.put(("refresh",None,None))
-
     async def disconnect(self):
         del self.project["handler"]
-        self.msg_thread.do_run = False
+        # self.msg_thread.do_run = False
         self.log.debug("Connection Closed")
         await self.ioloop.stop()
-        self.sidebarMsg("Disconnected.")
+        await self.sidebarMsg("Disconnected.")
         self.project["open"] = False
         self.project["connected"] = False
-        self.triggerSidebarRefresh()
+        await self.triggerSidebarRefresh()
 
     async def connect(self):
         try:
+            await self.sidebarMsg("Connecting Websocket.")
             self.project["connected"] = True
             self.log.debug("Websocket Connecting to "+self.url)
             request = HTTPRequest(self.url, headers={'Cookie': self.cookie})
             self.ws = await websocket_connect(request)
         except Exception as e:
-            self.sidebarMsg("Connection Error: "+str(e))
+            await self.sidebarMsg("Connection Error: "+str(e))
         else:
-            self.sidebarMsg("Connected.")
+            await self.sidebarMsg("Connected.")
             await self.run()
 
     async def run(self):
@@ -245,7 +258,7 @@ class AirLatexProject:
             while True:
                 msg = await self.ws.read_message()
                 # if msg is None:
-                #     self.sidebarMsg("Connection Closed")
+                #     await self.sidebarMsg("Connection Closed")
                 #     self.ws = None
                 #     break
                 self.log.debug("answer: "+msg)
@@ -260,7 +273,7 @@ class AirLatexProject:
 
                 # error occured
                 if code == "0":
-                    self.sidebarMsg("The server closed the connection.")
+                    await self.sidebarMsg("The server closed the connection.")
                     self.disconnect()
 
                 # first message
@@ -278,8 +291,8 @@ class AirLatexProject:
 
                     # connection accepted => join Project
                     if data["name"] == "connectionAccepted":
-                        self.sidebarMsg("Connection Active.")
-                        self.send("cmd",{"name":"joinProject","args":[{"project_id":self.project["id"]}]})
+                        await self.sidebarMsg("Connection Active.")
+                        await self.send("cmd",{"name":"joinProject","args":[{"project_id":self.project["id"]}]})
 
                     # broadcastDocMeta => we ignore it at first
                     elif data["name"] == "broadcastDocMeta":
@@ -289,14 +302,14 @@ class AirLatexProject:
                     elif data["name"] == "clientTracking.clientUpdated":
                         for cursor in data["args"]:
                             self.cursors[cursor["id"]].update(cursor)
-                        self.updateRemoteCursor(data["args"])
+                        await self.updateRemoteCursor(data["args"])
 
                     # client Disconnected => delete from cursor list
                     elif data["name"] == "clientTracking.clientDisconnected":
                         for id in data["args"]:
                             if id in self.cursors:
                                 del self.cursors[id]
-                        self.updateRemoteCursor(data["args"])
+                        await self.updateRemoteCursor(data["args"])
 
                     # update applied => apply update to buffer
                     elif data["name"] == "otUpdateApplied":
@@ -307,16 +320,16 @@ class AirLatexProject:
 
                         # apply update to buffer
                         for op in data["args"]:
-                            self.bufferDo(op["doc"], "applyUpdate", op)
+                            await self.bufferDo(op["doc"], "applyUpdate", op)
 
                     # error occured
                     elif data["name"] == "otUpdateError":
-                        self.sidebarMsg("Error occured on operation Update: " + data["args"][0])
-                        self.disconnect()
+                        await self.sidebarMsg("Error occured on operation Update: " + data["args"][0])
+                        await self.disconnect()
 
                     # unknown message
                     else:
-                        self.sidebarMsg("Data not known: "+msg)
+                        await self.sidebarMsg("Data not known: "+msg)
 
                 # answer to our request
                 elif code == "6":
@@ -332,13 +345,13 @@ class AirLatexProject:
                             self.log.debug(json.dumps(project_info))
                         self.project.update(project_info)
                         self.project["open"] = True
-                        self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
-                        self.triggerSidebarRefresh()
+                        await self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
+                        await self.triggerSidebarRefresh()
 
                     elif cmd == "joinDoc":
                         id = request["args"][0]
                         self.documents[id]["version"] = data[2]
-                        self.bufferDo(id, "write", [d.encode("latin1").decode("utf8") for d in data[1]])
+                        await self.bufferDo(id, "write", [d.encode("latin1").decode("utf8") for d in data[1]])
 
                     elif cmd == "applyOtUpdate":
                         id = request["args"][0]
@@ -359,31 +372,28 @@ class AirLatexProject:
                                 del cursor["cursorData"]
                                 cursor.update(cursorData)
                             self.cursors[cursor["client_id"]] = cursor
-                        self.updateRemoteCursor(data[1])
+                        await self.updateRemoteCursor(data[1])
 
                     elif cmd == "clientTracking.updatePosition":
                         # server accepted the change
                         del self.requests[answer_id]
 
                     else:
-                        self.sidebarMsg("Data not known:"+str(msg))
+                        await self.sidebarMsg("Data not known:"+str(msg))
 
                 # answer to our request
                 elif code == "7":
-                    self.sidebarMsg("Error: Unauthorized. My guess is that your session cookies are outdated or not loaded. Typically reloading '%s/project' using the browser you used for login should reload the cookies." % self.url_base)
+                    await self.sidebarMsg("Error: Unauthorized. My guess is that your session cookies are outdated or not loaded. Typically reloading '%s/project' using the browser you used for login should reload the cookies." % self.url_base)
 
                 # unknown message
                 else:
-                    self.sidebarMsg("Unknown Code:"+str(msg))
+                    await self.sidebarMsg("Unknown Code:"+str(msg))
         except (gen.Return, StopIteration):
             raise
         except Exception as e:
-            self.sidebarMsg("Error: "+type(e)+" "+str(e))
+            await self.sidebarMsg("Error: "+type(e)+" "+str(e))
             raise
 
     async def keep_alive(self):
-        if self.ws is None:
-            self.connect()
-        else:
-            await self.send("keep_alive")
+        await self.send("keep_alive")
 

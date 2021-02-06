@@ -27,7 +27,6 @@ class AirLatexSession:
         self.authenticated = False
         self.httpHandler = requests.Session()
         self.projectList = []
-        self.projectThreads = []
         self.status = ""
         self.log = getLogger(__name__)
 
@@ -49,15 +48,11 @@ class AirLatexSession:
                 self.cj.set_cookie(c)
         self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
 
-    def cleanup(self):
+    async def cleanup(self):
         self.log.debug("cleanup()")
         for p in self.projectList:
             if "handler" in p:
                 p["handler"].disconnect()
-        for t in self.projectThreads:
-            t.do_run = False
-        self.projectThreads = []
-
 
     # performs a loading animation until lock is released
     async def _makeStatusAnimation(self, str):
@@ -125,45 +120,6 @@ class AirLatexSession:
             return
 
         anim_status = create_task(self._makeStatusAnimation("Connecting to Project"))
-
-        # This is needed because IOLoop and pynvim interfere!
-        msg_queue = Queue()
-        msg_queue.put(("msg",None,"Connecting Project"))
-        project["msg_queue"] = msg_queue
-        def flush_queue(queue, project, servername):
-            t = currentThread()
-            self.nvim = pynvim.attach("socket",path=servername)
-            while getattr(t, "do_run", True):
-                cmd, doc, data = queue.get()
-                try:
-                    if cmd == "msg":
-                        self.log.debug("msg_queue : "+data)
-                        project["msg"] = data
-                        # nvim.command("call AirLatex_SidebarRefresh()")
-                        continue
-                    elif cmd == "await":
-                        project["await"] = data
-                        # nvim.command("call AirLatex_SidebarRefresh()")
-                        continue
-                    elif cmd == "refresh":
-                        self.triggerRefresh()
-                        continue
-
-                    buf = doc["buffer"]
-                    self.log.debug("cmd="+cmd)
-                    if cmd == "applyUpdate":
-                        buf.applyUpdate(data)
-                    elif cmd == "write":
-                        buf.write(data)
-                    elif cmd == "updateRemoteCursor":
-                        buf.updateRemoteCursor(data)
-                except Exception as e:
-                    self.log.error("Exception"+str(e))
-                    project["msg"] = "Exception:"+str(e)
-                    # nvim.command("call AirLatex_SidebarRefresh()")
-        msg_thread = Thread(target=flush_queue, args=(msg_queue, project, self.servername), daemon=True)
-        msg_thread.start()
-        self.projectThreads.append(msg_thread)
 
         # start connection
         anim_status.cancel()
