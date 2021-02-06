@@ -97,7 +97,6 @@ class AirLatexProject:
     async def triggerSidebarRefresh(self):
         self.log.debug("triggerSidebarRefresh()")
         await self.sidebar.triggerRefresh()
-        # self.msg_queue.put(("refresh",None,None))
 
     async def updateCursor(self,doc, pos):
         event = Event()
@@ -210,8 +209,6 @@ class AirLatexProject:
     async def joinDocument(self, buffer):
 
         # register buffer in document
-        # doc = buffer # FOR DEBUG MODE
-        # doc["buffer"] = Mock() # FOR DEBUG MODE
         doc = buffer.document
         doc["buffer"] = buffer
 

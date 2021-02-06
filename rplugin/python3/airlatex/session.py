@@ -144,7 +144,6 @@ class AirLatexSession:
             # To establish a websocket connection
             # the client must query for a sec url
             self.httpHandler.get(self.url + "/project", cookies=self.cj)
-            # channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp)
             channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp, cookies=self.cj)
             self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
             wsChannel = channelInfo.text[0:channelInfo.text.find(":")]

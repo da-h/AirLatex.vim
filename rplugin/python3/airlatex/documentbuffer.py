@@ -42,8 +42,6 @@ class DocumentBuffer:
         self.nvim.command('setlocal buftype=nofile')
         self.nvim.command("set filetype="+self.getExt())
 
-        # self.applyString(serverBuffer)
-
         # ??? Returning normal function to these buttons
         # self.nvim.command("nmap <silent> <up> <up>")
         # self.nvim.command("nmap <silent> <down> <down>")
@@ -63,13 +61,10 @@ class DocumentBuffer:
             for l in lines[1:]:
                 buffer.append(l)
             self.saved_buffer = buffer[:]
-        # self.serverBuffer = "\n".join(lines)
         self.nvim.async_call(writeLines,self.buffer,lines)
-        # self.nvim.command("call AirLatex_SidebarRefresh()")
 
     def updateRemoteCursor(self, cursor):
         self.log.debug_gui("updateRemoteCursor()")
-        pass
         # def updateRemoteCursor(cursor, nvim):
         #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
         # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)

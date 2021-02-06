@@ -28,7 +28,6 @@ class SideBar:
         create_task(self.flush_refresh())
 
     def cleanup(self):
-        # self.refresh_thread.do_run = False
         self.airlatex.session.cleanup()
 
 
@@ -62,10 +61,7 @@ class SideBar:
                     self.nvim.async_call(self.listProjects, (True))
                     self.log.debug_gui("flush_refresh() -> done")
                 else:
-                    # self.nvim.call("AirLatex_SidebarRefresh()")
-                    # self.nvim.call('AirLatex_SidebarUpdateStatus')
                     self.nvim.async_call(self.updateStatus)
-                    # self.updateStatus()
         except Exception as e:
             self.log.exception(str(e))
 
@@ -79,7 +75,6 @@ class SideBar:
             # self.nvim.command('setlocal ma')
             self.statusline[0] = self.statusline[0][:15] + self.airlatex.session.status
             # self.nvim.command('setlocal noma')
-        # self.nvim.loop.create_task(self._refresh_lock_release())
 
     def bufferappend(self, arg, pos=[]):
         if self.buffer_write_i >= len(self.buffer):
@@ -98,10 +93,7 @@ class SideBar:
     def initGUI(self):
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
-        # self.refresh_queue.put(False)
         self.listProjects(False)
-        # self.nvim.async_call(self.listProjects, (False))
-        # self.nvim.loop.create_task(self.listProjects(False))
 
     def initSidebarBuffer(self):
         self.log.debug_gui("initSidebarBuffer()")
