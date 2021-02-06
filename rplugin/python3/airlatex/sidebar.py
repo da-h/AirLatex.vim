@@ -154,7 +154,7 @@ class SideBar:
             # self.nvim.command('setlocal ma')
             self.cursorPos = []
             if self.airlatex.session:
-                projectList = self.airlatex.session.projectList()
+                projectList = self.airlatex.session.projectList
                 status = self.airlatex.session.status
             else:
                 projectList = []

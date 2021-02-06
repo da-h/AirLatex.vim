@@ -26,7 +26,7 @@ class AirLatexSession:
         self.url = ("https://" if https else "http://") + domain
         self.authenticated = False
         self.httpHandler = requests.Session()
-        self.cached_projectList = []
+        self.projectList = []
         self.projectThreads = []
         self.status = ""
         self.log = getLogger(__name__)
@@ -51,7 +51,7 @@ class AirLatexSession:
 
     def cleanup(self):
         self.log.debug("cleanup()")
-        for p in self.cached_projectList:
+        for p in self.projectList:
             if "handler" in p:
                 p["handler"].disconnect()
         for t in self.projectThreads:
@@ -92,10 +92,6 @@ class AirLatexSession:
         else:
             return False
 
-    # Returns a list of airlatex projects
-    def projectList(self):
-        return self.cached_projectList
-
     async def updateProjectList(self):
         self.log.debug("updateProjectList()")
         if self.authenticated:
@@ -118,8 +114,8 @@ class AirLatexSession:
             self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage)[1]
             await self.updateStatus("Online")
 
-            self.cached_projectList = data["projects"]
-            self.cached_projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
+            self.projectList = data["projects"]
+            self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
             await self.triggerRefresh()
 
     # Returns a list of airlatex projects
