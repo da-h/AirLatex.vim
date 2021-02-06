@@ -170,16 +170,9 @@ class AirLatexSession:
         self.projectThreads.append(msg_thread)
 
         # start connection
-        try:
-            anim_status.cancel()
-            self.log.debug("creating airlatexproject")
-            airlatexproject = AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
-            self.log.debug("starting airlatexproject")
-            create_task(airlatexproject.start())
-            self.log.debug("starting airlatexproject done")
-        except Exception as e:
-            self.log.error(traceback.format_exc(e))
-            self.nvim.err_write(traceback.format_exc(e)+"\n")
+        anim_status.cancel()
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=self.cj_str)
+        create_task(airlatexproject.start())
 
     async def updateStatus(self, msg):
         self.log.debug_gui("updateStatus("+msg+")")
@@ -191,7 +184,7 @@ class AirLatexSession:
         self.log.debug_gui("triggerRefresh()")
         await self.sidebar.triggerRefresh()
 
-    def _getWebSocketURL(self):
+    async def _getWebSocketURL(self):
         if self.authenticated:
             # Generating timestamp
             timestamp = _genTimeStamp()

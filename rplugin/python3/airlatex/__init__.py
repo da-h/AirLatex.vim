@@ -46,8 +46,7 @@ class AirLatex:
 
     @pynvim.function('AirLatex_SidebarUpdateStatus', sync=False)
     def sidebarStatus(self, args):
-        self.nvim.loop.create_task(self.sidebar.updateStatus())
-        # self.sidebar.updateStatus()
+        create_task(self.sidebar.updateStatus())
 
     @pynvim.function('AirLatex_ProjectEnter', sync=True)
     def projectEnter(self, args):
