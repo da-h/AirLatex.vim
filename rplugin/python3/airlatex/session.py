@@ -14,17 +14,6 @@ from airlatex.util import _genTimeStamp, getLogger
 from http.cookiejar import CookieJar
 
 
-import traceback
-def catchException(fn):
-    def wrapped(self, *args, **kwargs):
-        try:
-            return fn(self, *args, **kwargs)
-        except Exception as e:
-            self.log.exception(str(e))
-            self.nvim.err_write(str(e)+"\n")
-            raise e
-    return wrapped
-
 
 ### All web page related airlatex stuff
 class AirLatexSession:
@@ -60,7 +49,6 @@ class AirLatexSession:
                 self.cj.set_cookie(c)
         self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
 
-    @catchException
     def cleanup(self):
         self.log.debug("cleanup()")
         for p in self.cached_projectList:
@@ -79,7 +67,6 @@ class AirLatexSession:
             await self.updateStatus(s + " " + str + " " + s)
             i += 1
 
-    @catchException
     async def login(self):
         self.log.debug("login()")
         if not self.authenticated:
@@ -106,11 +93,9 @@ class AirLatexSession:
             return False
 
     # Returns a list of airlatex projects
-    # @catchException
     def projectList(self):
         return self.cached_projectList
 
-    @catchException
     async def updateProjectList(self):
         self.log.debug("updateProjectList()")
         if self.authenticated:
@@ -138,7 +123,6 @@ class AirLatexSession:
             await self.triggerRefresh()
 
     # Returns a list of airlatex projects
-    @catchException
     async def connectProject(self, project):
         if not self.authenticated:
             await self.UpdateStatus("Not Authenticated to connect")
@@ -197,14 +181,12 @@ class AirLatexSession:
             self.log.error(traceback.format_exc(e))
             self.nvim.err_write(traceback.format_exc(e)+"\n")
 
-    @catchException
     async def updateStatus(self, msg):
         self.log.debug_gui("updateStatus("+msg+")")
         self.status = msg
         await self.sidebar.triggerRefresh(False)
         await sleep(0.1)
 
-    @catchException
     async def triggerRefresh(self):
         self.log.debug_gui("triggerRefresh()")
         await self.sidebar.triggerRefresh()

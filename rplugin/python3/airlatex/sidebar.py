@@ -6,17 +6,6 @@ from airlatex.util import getLogger
 import traceback
 
 
-import traceback
-def catchException(fn):
-    def wrapped(self, *args, **kwargs):
-        try:
-            return fn(self, *args, **kwargs)
-        except Exception as e:
-            # self.log.error(str(e))
-            # self.nvim.err_write(str(e)+"\n")
-            self.log.exception(str(e))
-    return wrapped
-
 class SideBar:
     def __init__(self, nvim, airlatex):
         self.nvim = nvim
@@ -38,7 +27,6 @@ class SideBar:
 
         self.nvim.loop.create_task(self.flush_refresh())
 
-    @catchException
     def cleanup(self):
         # self.refresh_thread.do_run = False
         self.airlatex.session.cleanup()
@@ -48,7 +36,6 @@ class SideBar:
     # GUI Drawing #
     # ----------- #
 
-    # @catchException
     async def flush_refresh(self):
         try:
             self.log.debug_gui("flush_refresh() -> started loop")
@@ -82,12 +69,10 @@ class SideBar:
         except Exception as e:
             self.log.exception(str(e))
 
-    @catchException
     async def triggerRefresh(self, all=True):
         self.log.debug("triggerRefresh() -> event called")
         await self.refresh_queue.put(all)
 
-    @catchException
     def updateStatus(self):
         if self.airlatex.session and hasattr(self,'statusline'):
             self.log.debug_gui("updateStatus()")
@@ -96,7 +81,6 @@ class SideBar:
             # self.nvim.command('setlocal noma')
         # self.nvim.loop.create_task(self._refresh_lock_release())
 
-    @catchException
     def bufferappend(self, arg, pos=[]):
         if self.buffer_write_i >= len(self.buffer):
             self.buffer.append(arg)
@@ -106,13 +90,11 @@ class SideBar:
         if self.buffer_write_i == self.cursor[0]:
             self.cursorPos = pos
 
-    @catchException
     def vimCursorSet(self,row,col):
         if self.buffer == self.nvim.current.window.buffer:
             window = self.nvim.current.window
             window.cursor = (row,col)
 
-    @catchException
     def initGUI(self):
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
@@ -121,7 +103,6 @@ class SideBar:
         # self.nvim.async_call(self.listProjects, (False))
         # self.nvim.loop.create_task(self.listProjects(False))
 
-    @catchException
     def initSidebarBuffer(self):
         self.log.debug_gui("initSidebarBuffer()")
 
@@ -165,7 +146,6 @@ class SideBar:
         self.nvim.command("nmap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
         self.nvim.command("nmap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
 
-    @catchException
     def listProjects(self, overwrite=False):
         self.log.debug_gui("listProjects(%s)" % str(overwrite))
         if self.buffer == self.nvim.current.window.buffer:
@@ -249,7 +229,6 @@ class SideBar:
     async def _refresh_lock_release(self):
         await self.refresh_lock.release()
 
-    @catchException
     def listProjectStructure(self, rootFolder, pos, indent=0):
         self.log.debug_gui("listProjectStructure()")
 
@@ -281,7 +260,6 @@ class SideBar:
     # Actions #
     # ------- #
 
-    @catchException
     def cursorAt(self, pos):
 
         # no pos given
@@ -299,7 +277,6 @@ class SideBar:
         return True
 
 
-    @catchException
     def cursorAction(self, key="enter"):
         self.log.debug_gui("cursorAction(%s)" % key)
 
@@ -341,7 +318,6 @@ class SideBar:
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
             self.cursorPos[0]["handler"].joinDocument(documentbuffer)
 
-    @catchException
     def _toggle(self, dict, key, default=True):
         if key not in dict:
             dict[key] = default
