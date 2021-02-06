@@ -1,6 +1,6 @@
 import pynvim
 from time import gmtime, strftime
-from asyncio import Queue, Lock, sleep
+from asyncio import Queue, Lock, sleep, create_task
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import getLogger
 import traceback
@@ -25,7 +25,7 @@ class SideBar:
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
         self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
 
-        self.nvim.loop.create_task(self.flush_refresh())
+        create_task(self.flush_refresh())
 
     def cleanup(self):
         # self.refresh_thread.do_run = False
@@ -224,7 +224,7 @@ class SideBar:
             self.log.error(traceback.format_exc(e))
             self.nvim.err_write(traceback.format_exc(e)+"\n")
         finally:
-            self.nvim.loop.create_task(self._refresh_lock_release())
+            create_task(self._refresh_lock_release())
 
     async def _refresh_lock_release(self):
         await self.refresh_lock.release()
@@ -303,7 +303,7 @@ class SideBar:
                             project["handler"].disconnect()
                     self.triggerRefresh()
                 else:
-                    self.nvim.loop.create_task(self.airlatex.session.connectProject(project))
+                    create_task(self.airlatex.session.connectProject(project))
 
         elif not isinstance(self.cursorPos[-1], dict):
             pass
@@ -316,7 +316,7 @@ class SideBar:
         # is file
         elif self.cursorPos[-1]["type"] == "file":
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
-            self.cursorPos[0]["handler"].joinDocument(documentbuffer)
+            create_task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))
 
     def _toggle(self, dict, key, default=True):
         if key not in dict:

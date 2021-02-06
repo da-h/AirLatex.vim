@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 from threading import RLock
 from airlatex.util import getLogger
 from hashlib import sha1
+from asyncio import create_task
 
 if "allBuffers" not in globals():
     allBuffers = {}
@@ -77,7 +78,7 @@ class DocumentBuffer:
         self.log.debug_gui("writeBuffer()")
 
         # update CursorPosition
-        self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor)
+        create_task(self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor))
 
         # skip if not yet initialized
         if self.saved_buffer is None:
@@ -176,7 +177,7 @@ class DocumentBuffer:
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
         self.log.debug_gui("writeBuffer() -> sending ops")
-        self.project_handler.sendOps(self.document, ops)
+        create_task(self.project_handler.sendOps(self.document, ops))
         self.log.debug_gui("writeBuffer() -> done")
 
     def applyUpdate(self,ops):

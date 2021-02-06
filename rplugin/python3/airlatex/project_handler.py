@@ -46,8 +46,8 @@ class AirLatexProject:
     async def start(self):
         self.log.debug("start")
         # start tornado event loop & related callbacks
-        # IOLoop.current().spawn_callback(self.sendOps_flush)
-        # PeriodicCallback(self.keep_alive, 20000).start()
+        IOLoop.current().spawn_callback(self.sendOps_flush)
+        PeriodicCallback(self.keep_alive, 20000).start()
         await self.connect()
         await self.ioloop.start()
 
@@ -381,11 +381,9 @@ class AirLatexProject:
             self.sidebarMsg("Error: "+type(e)+" "+str(e))
             raise
 
-
-    def keep_alive(self):
-        pass
-        # if self.ws is None:
-        #     self.connect()
-        # else:
-        #     self.send("keep_alive")
+    async def keep_alive(self):
+        if self.ws is None:
+            self.connect()
+        else:
+            await self.send("keep_alive")
 

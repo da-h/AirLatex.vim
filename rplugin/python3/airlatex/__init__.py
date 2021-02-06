@@ -1,5 +1,6 @@
 import pynvim
 import sys
+from asyncio import create_task
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
@@ -34,7 +35,7 @@ class AirLatex:
             https = self.nvim.eval("g:AirLatexUseHTTPS")
             try:
                 self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, self.nvim, https=https)
-                self.nvim.loop.create_task(self.session.login())
+                create_task(self.session.login())
             except Exception as e:
                 self.sidebar.log.error(str(e))
                 self.nvim.out_write(str(e)+"\n")
@@ -42,7 +43,7 @@ class AirLatex:
     @pynvim.function('AirLatex_SidebarRefresh', sync=False)
     def sidebarRefresh(self, args):
         if self.sidebar:
-            self.nvim.loop.create_task(self.sidebar.triggerRefresh())
+            create_task(self.sidebar.triggerRefresh())
 
     @pynvim.function('AirLatex_SidebarUpdateStatus', sync=False)
     def sidebarStatus(self, args):
