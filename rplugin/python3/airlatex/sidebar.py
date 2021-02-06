@@ -43,7 +43,7 @@ class SideBar:
             # direct sending
             while True:
                 arg = await self.refresh_queue.get()
-                self.log.debug("flush_refresh() -> called")
+                self.log.debug_gui("flush_refresh() -> called")
 
                 # flush also all other waiting triggerRefresh-Calls
                 arg_new = False
@@ -60,7 +60,7 @@ class SideBar:
                 if arg or arg_new:
                     await self.refresh_lock.acquire()
                     self.nvim.async_call(self.listProjects, (True))
-                    self.log.debug("flush_refresh() -> done")
+                    self.log.debug_gui("flush_refresh() -> done")
                 else:
                     # self.nvim.call("AirLatex_SidebarRefresh()")
                     # self.nvim.call('AirLatex_SidebarUpdateStatus')
@@ -70,7 +70,7 @@ class SideBar:
             self.log.exception(str(e))
 
     async def triggerRefresh(self, all=True):
-        self.log.debug("triggerRefresh() -> event called")
+        self.log.debug_gui("triggerRefresh() -> event called")
         await self.refresh_queue.put(all)
 
     def updateStatus(self):
