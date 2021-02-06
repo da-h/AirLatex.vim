@@ -41,12 +41,15 @@ class AirLatexProject:
         self.documents = {}
         self.log = getLogger(__name__)
         self.ops_queue = Queue()
+        self.log.debug("init done")
 
+    async def start(self):
+        self.log.debug("start")
         # start tornado event loop & related callbacks
-        IOLoop.current().spawn_callback(self.sendOps_flush)
-        PeriodicCallback(self.keep_alive, 20000).start()
-        self.connect()
-        self.ioloop.start()
+        # IOLoop.current().spawn_callback(self.sendOps_flush)
+        # PeriodicCallback(self.keep_alive, 20000).start()
+        await self.connect()
+        await self.ioloop.start()
 
     def send(self,message_type,message=None,event=None):
         if message_type == "keep_alive":
@@ -215,34 +218,32 @@ class AirLatexProject:
         self.log.debug("triggerSidebarRefresh()")
         self.msg_queue.put(("refresh",None,None))
 
-    def disconnect(self):
+    async def disconnect(self):
         del self.project["handler"]
         self.msg_thread.do_run = False
         self.log.debug("Connection Closed")
-        self.ioloop.stop()
+        await self.ioloop.stop()
         self.sidebarMsg("Disconnected.")
         self.project["open"] = False
         self.project["connected"] = False
         self.triggerSidebarRefresh()
 
-    @gen.coroutine
-    def connect(self):
+    async def connect(self):
         try:
             self.project["connected"] = True
             self.log.debug("Websocket Connecting to "+self.url)
             request = HTTPRequest(self.url, headers={'Cookie': self.cookie})
-            self.ws = yield websocket_connect(request)
+            self.ws = await websocket_connect(request)
         except Exception as e:
             self.sidebarMsg("Connection Error: "+str(e))
         else:
             self.sidebarMsg("Connected.")
-            self.run()
+            await self.run()
 
-    @gen.coroutine
-    def run(self):
+    async def run(self):
         try:
             while True:
-                msg = yield self.ws.read_message()
+                msg = await self.ws.read_message()
                 # if msg is None:
                 #     self.sidebarMsg("Connection Closed")
                 #     self.ws = None
@@ -382,8 +383,9 @@ class AirLatexProject:
 
 
     def keep_alive(self):
-        if self.ws is None:
-            self.connect()
-        else:
-            self.send("keep_alive")
+        pass
+        # if self.ws is None:
+        #     self.connect()
+        # else:
+        #     self.send("keep_alive")
 

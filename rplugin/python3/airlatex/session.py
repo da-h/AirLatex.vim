@@ -166,7 +166,7 @@ class AirLatexSession:
                         # nvim.command("call AirLatex_SidebarRefresh()")
                         continue
                     elif cmd == "refresh":
-                        # self.triggerRefresh()
+                        self.triggerRefresh()
                         continue
 
                     buf = doc["buffer"]
@@ -186,17 +186,16 @@ class AirLatexSession:
         self.projectThreads.append(msg_thread)
 
         # start connection
-        def initProject():
-            nvim = pynvim.attach("socket",path=self.servername)
-            try:
-                AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
-            except Exception as e:
-                self.log.error(traceback.format_exc(e))
-                nvim.err_write(traceback.format_exc(e)+"\n")
-        thread = Thread(target=initProject,daemon=True)
-        self.projectThreads.append(thread)
-        thread.start()
-        anim_status.cancel()
+        try:
+            anim_status.cancel()
+            self.log.debug("creating airlatexproject")
+            airlatexproject = AirLatexProject(self._getWebSocketURL(), project, self.user_id, msg_queue, msg_thread, cookie=self.cj_str)
+            self.log.debug("starting airlatexproject")
+            create_task(airlatexproject.start())
+            self.log.debug("starting airlatexproject done")
+        except Exception as e:
+            self.log.error(traceback.format_exc(e))
+            self.nvim.err_write(traceback.format_exc(e)+"\n")
 
     @catchException
     async def updateStatus(self, msg):
