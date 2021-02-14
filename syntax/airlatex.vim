@@ -11,6 +11,7 @@ syn match AirLatexProjInfoLine   #^\s\s\s-\+#
 syn match AirLatexProjInfoML     #^\s\s\s\+.\+:\n#
 syn match AirLatexProjInfo       #^\s\s\s.\+:\s.\+#
 syn match AirLatexProjInfoVal    #:\s\zs.\+# containedin=AirLatexProjInfo
+syn match AirLatexProjInfoValErr #Error:\s.\+# containedin=AirLatexProjInfoVal
 
 syn match AirLatexStatus         #^\s.\+\s:\s.\+#
 syn match AirLatexStatusValue    #:\zs.\+# contained containedin=AirLatexStatus
@@ -29,6 +30,7 @@ hi def link AirLatexProjInfoLine Comment
 hi def link AirLatexProjInfo Comment
 hi def link AirLatexProjInfoML Comment
 hi def link AirLatexProjInfoVal Type
+hi def link AirLatexProjInfoValErr Todo
 
 hi def link AirLatexStatus Function
 hi def link AirLatexStatusOnline String
