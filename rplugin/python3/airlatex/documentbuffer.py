@@ -19,7 +19,6 @@ class DocumentBuffer:
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
         self.saved_buffer = None
-        self.content_hash = None
 
     def getName(self):
         return "/".join([p["name"] for p in self.path])
@@ -157,22 +156,23 @@ class DocumentBuffer:
         ops.reverse()
 
         # compute sha1-hash of current buffer
+        buffer_cpy = self.buffer[:]
         current_len = 0
-        for row in self.buffer:
+        for row in buffer_cpy:
             current_len += len(row)+1
         current_len -= 1
         tohash = ("blob "+str(current_len) + "\x00")
-        for b in self.buffer[:-1]:
+        for b in buffer_cpy[:-1]:
             tohash += b+"\n"
-        tohash += self.buffer[-1]
+        tohash += buffer_cpy[-1]
         sha = sha1()
         sha.update(tohash.encode())
-        self.content_hash = sha.hexdigest()
+        content_hash = sha.hexdigest()
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
         self.log.debug_gui("writeBuffer() -> sending ops")
-        create_task(self.project_handler.sendOps(self.document, ops))
+        create_task(self.project_handler.sendOps(self.document, content_hash, ops))
         self.log.debug_gui("writeBuffer() -> done")
 
     def applyUpdate(self,ops):

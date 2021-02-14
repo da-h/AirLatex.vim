@@ -110,11 +110,11 @@ class AirLatexProject:
         }, event=event)
 
     # wrapper for the ioloop
-    async def sendOps(self, document, ops=[]):
-        await self.ops_queue.put((document, ops))
+    async def sendOps(self, document, content_hash, ops=[]):
+        await self.ops_queue.put((document, content_hash, ops))
 
     # actual sending of ops
-    async def _sendOps(self, document, ops=[]):
+    async def _sendOps(self, document, content_hash, ops=[]):
         self.log.debug("_sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
 
         # append new ops to buffer
@@ -144,10 +144,9 @@ class AirLatexProject:
             # },
             "op": ops_buffer,
             "v": document["version"],
-            "lastV": document["version"]-1
+            "lastV": document["version"]-1,
+            "hash": content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
         }
-        if document["buffer"].content_hash:
-            obj_to_send["hash"] = document["buffer"].content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
 
         await self.send("cmd",{
             "name":"applyOtUpdate",
@@ -178,7 +177,7 @@ class AirLatexProject:
             all_ops = {}
 
             # await first element
-            document, ops = await self.ops_queue.get()
+            document, content_hash, ops = await self.ops_queue.get()
             self.log.debug("sendOps_flush() -> got first")
             if document["_id"] not in all_ops:
                 all_ops[document["_id"]] = ops
@@ -189,7 +188,7 @@ class AirLatexProject:
             num = self.ops_queue.qsize()
             for i in range(num):
                 self.log.debug("sendOps_flush() -> got another "+str(num))
-                document, ops = await self.ops_queue.get()
+                document, content_hash, ops = await self.ops_queue.get()
                 self.log.debug("sendOps_flush() -> got another")
                 if document["_id"] not in all_ops:
                     all_ops[document["_id"]] = ops
@@ -201,7 +200,7 @@ class AirLatexProject:
             self.log.debug("sendOps_flush() -> sending")
             for doc_id, ops in all_ops.items():
                 document = self.documents[doc_id]
-                await self._sendOps(document, ops)
+                await self._sendOps(document, content_hash, ops)
 
 
 
