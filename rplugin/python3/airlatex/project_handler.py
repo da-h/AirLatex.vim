@@ -152,6 +152,7 @@ class AirLatexProject:
             ]
         }, event=event)
         self.log.debug("ops await accept -> wait")
+
         await event.wait()
         await self.gui_await(False)
         self.log.debug("ops await accept -> done")
@@ -222,15 +223,15 @@ class AirLatexProject:
             ]
         })
 
-    async def disconnect(self):
-        del self.project["handler"]
+    async def disconnect(self, msg="Disconnected."):
+        # del self.project["handler"]
         # self.msg_thread.do_run = False
         self.log.debug("Connection Closed")
-        await self.ioloop.stop()
-        await self.sidebarMsg("Disconnected.")
+        self.project["msg"] = msg
         self.project["open"] = False
         self.project["connected"] = False
         await self.sidebar.triggerRefresh()
+        # await self.ioloop.stop()
 
     async def connect(self):
         try:
@@ -265,12 +266,11 @@ class AirLatexProject:
 
                 # error occured
                 if code == "0":
-                    await self.sidebarMsg("The server closed the connection.")
-                    self.disconnect()
+                    await self.disconnect("Error: The server closed the connection.")
 
                 # first message
                 elif code == "1":
-                    pass
+                    await self.gui_await(False)
 
                 # keep alive
                 elif code == "2":
@@ -316,8 +316,7 @@ class AirLatexProject:
 
                     # error occured
                     elif data["name"] == "otUpdateError":
-                        await self.sidebarMsg("Error occured on operation Update: " + data["args"][0])
-                        await self.disconnect()
+                        await self.disconnect("Error occured on operation Update: " + data["args"][0])
 
                     # unknown message
                     else:
