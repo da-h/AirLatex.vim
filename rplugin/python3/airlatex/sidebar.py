@@ -163,7 +163,7 @@ class SideBar:
                     if self.cursorAt([project]):
                         if "open" in project and project["open"]:
                             self.bufferappend("   -----------------")
-                    if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project])):
+                    if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project]) or "msg" in project and project["msg"].startswith("Error")):
                         self.bufferappend("   msg: "+project['msg'])
                     if self.cursorAt([project]):
                         if "await" not in project:
