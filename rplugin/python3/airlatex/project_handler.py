@@ -94,10 +94,6 @@ class AirLatexProject:
             if "row" in cursor and "column" in cursor and "doc_id" in cursor:
                 await self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
-    async def triggerSidebarRefresh(self):
-        self.log.debug("triggerSidebarRefresh()")
-        await self.sidebar.triggerRefresh()
-
     async def updateCursor(self,doc, pos):
         event = Event()
         await self.send("update",{
@@ -234,7 +230,7 @@ class AirLatexProject:
         await self.sidebarMsg("Disconnected.")
         self.project["open"] = False
         self.project["connected"] = False
-        await self.triggerSidebarRefresh()
+        await self.sidebar.triggerRefresh()
 
     async def connect(self):
         try:
@@ -342,7 +338,7 @@ class AirLatexProject:
                         self.project.update(project_info)
                         self.project["open"] = True
                         await self.send("cmd",{"name":"clientTracking.getConnectedUsers"})
-                        await self.triggerSidebarRefresh()
+                        await self.sidebar.triggerRefresh()
 
                     elif cmd == "joinDoc":
                         id = request["args"][0]
