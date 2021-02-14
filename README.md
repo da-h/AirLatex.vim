@@ -76,7 +76,7 @@ Troubleshooting
 ===============
 **Cannot login / Offline / Unauthorized.**  
 The most common solution is: “Did you turn it on and off again“. Not kidding. **Reload the project page without using the browser cache** to reset the cookies.  
-(Typically you can hit Ctrl + Shift + R to reload the page without using the cache.)
+(Typically you can hit Ctrl + Shift + R to reload the page without using the cache, or clear the cookie cache, e.g. by clicking on the little lock beside the page URL.)
 
 More details / Debugging:
 The most common problem with this kind of problem is that the session cookies cannot be found by [browser_cookie3](https://github.com/borisbabic/browser_cookie3). If you use AirLatex' debug mode (`leg g:AirLatexLogLevel='DEBUG'`), the Log file will list all cookies that have been found. In all settings that I've tried, at least one cookie, `overleaf_session2`, is required to at least make the login work. More prominent instances (i.e. www.overleaf.com) may also require the cookie `gke-route` to be recognized. (Just check your Browser which cookies are actually needed for the login).
