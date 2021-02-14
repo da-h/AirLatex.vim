@@ -268,7 +268,7 @@ class SideBar:
             # disconnect all
             if self.cursorPos[0] == "disconnect":
                 if self.airlatex.session:
-                    self.airlatex.session.cleanup(self.nvim)
+                    self.airlatex.session.cleanup()
 
             # else is project
             elif not isinstance(self.cursorPos[0], str):
