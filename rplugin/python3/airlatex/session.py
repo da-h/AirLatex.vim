@@ -15,9 +15,16 @@ from http.cookiejar import CookieJar
 
 
 
-### All web page related airlatex stuff
 class AirLatexSession:
+
     def __init__(self, domain, servername, sidebar, nvim, https=True):
+        """
+        Manages the Session to the server:
+        - queries cookies & checks wether these suffice as authentication
+        - queries the project list
+        - initializes AirLatexProject objects
+        """
+
         self.sidebar = sidebar
         self.nvim = nvim
         self.servername = servername
@@ -27,11 +34,22 @@ class AirLatexSession:
         self.authenticated = False
         self.httpHandler = requests.Session()
         self.projectList = []
-        self.status = ""
         self.log = getLogger(__name__)
 
+        self._updateCookies()
+
+
+    # ------- #
+    # helpers #
+    # ------- #
+
+    def _updateCookies(self):
+        """
+        Queries cookies using browser_cookie3 and caches them (self.cj, self.cj_str).
+        """
+
         # guess cookie dir (browser_cookie3 does that already mostly)
-        browser   = nvim.eval("g:AirLatexCookieBrowser")
+        browser   = self.nvim.eval("g:AirLatexCookieBrowser")
         if browser == "auto":
             cj = browser_cookie3.load()
         elif browser.lower() == "firefox":
@@ -48,21 +66,53 @@ class AirLatexSession:
                 self.cj.set_cookie(c)
         self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
 
+    async def _makeStatusAnimation(self, str):
+        """
+        Performs a loading animation.
+        """
+        i = 0
+        while True:
+            s = " .." if i%3 == 0 else ". ." if i%3 == 1 else ".. "
+            await self.sidebar.updateStatus(s + " " + str + " " + s)
+            await sleep(0.1)
+            i += 1
+
+    async def _getWebSocketURL(self):
+        """
+        Query websites websocket meta information to be used for further connections.
+        """
+        if self.authenticated:
+            # Generating timestamp
+            timestamp = _genTimeStamp()
+
+            # To establish a websocket connection
+            # the client must query for a sec url
+            self.httpHandler.get(self.url + "/project", cookies=self.cj)
+            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp, cookies=self.cj)
+            self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
+            wsChannel = channelInfo.text[0:channelInfo.text.find(":")]
+            self.log.debug("Websocket wsChannel '%s'"%wsChannel)
+            return ("wss://" if self.https else "ws://") + self.domain + "/socket.io/1/websocket/"+wsChannel
+
+
+    # --- #
+    # api # (to be used by pynvim.plugin)
+    # --- #
+
     async def cleanup(self):
+        """
+        Disconnects all connected AirLatexProjects.
+        """
         self.log.debug("cleanup()")
         for p in self.projectList:
             if "handler" in p:
                 p["handler"].disconnect()
-
-    # performs a loading animation until lock is released
-    async def _makeStatusAnimation(self, str):
-        i = 0
-        while True:
-            s = " .." if i%3 == 0 else ". ." if i%3 == 1 else ".. "
-            await self.updateStatus(s + " " + str + " " + s)
-            i += 1
+        create_task(self.sidebar.updateStatus("Disconnected"))
 
     async def login(self):
+        """
+        Test authentication by opening webpage & retrieving project list.
+        """
         self.log.debug("login()")
         if not self.authenticated:
             anim_status = create_task(self._makeStatusAnimation("Connecting"))
@@ -80,14 +130,17 @@ class AirLatexSession:
                     self.log.debug("Could not fetch '%s/project'. Response chain: %s" % (self.url, str(redirect)))
                     with tempfile.NamedTemporaryFile(delete=False) as f:
                         f.write(redirect.text.encode())
-                        await self.updateStatus("Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name)
+                        create_task(self.sidebar.updateStatus("Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name))
                     return False
             except Exception as e:
-                await self.updateStatus("Connection failed: "+str(e))
+                create_task(self.sidebar.updateStatus("Connection failed: "+str(e)))
         else:
             return False
 
     async def updateProjectList(self):
+        """
+        Retrieves project list.
+        """
         self.log.debug("updateProjectList()")
         if self.authenticated:
             anim_status = create_task(self._makeStatusAnimation("Loading Projects"))
@@ -102,21 +155,23 @@ class AirLatexSession:
             if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.encode())
-                    await self.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s" % (self.url, f.name))
+                    create_task(self.sidebar.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s" % (self.url, f.name)))
                 return []
             data = projectPage[pos_script_2+1:pos_script_close]
             data = json.loads(data)
             self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage)[1]
-            await self.updateStatus("Online")
+            create_task(self.sidebar.updateStatus("Online"))
 
             self.projectList = data["projects"]
             self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
-            await self.triggerRefresh()
+            create_task(self.sidebar.triggerRefresh())
 
-    # Returns a list of airlatex projects
     async def connectProject(self, project):
+        """
+        Initializing connection to a project.
+        """
         if not self.authenticated:
-            await self.UpdateStatus("Not Authenticated to connect")
+            create_task(self.sidebar.updateStatus("Not Authenticated to connect"))
             return
 
         anim_status = create_task(self._makeStatusAnimation("Connecting to Project"))
@@ -125,30 +180,6 @@ class AirLatexSession:
         anim_status.cancel()
         airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=self.cj_str)
         create_task(airlatexproject.start())
-
-    async def updateStatus(self, msg):
-        self.log.debug_gui("updateStatus("+msg+")")
-        self.status = msg
-        await self.sidebar.triggerRefresh(False)
-        await sleep(0.1)
-
-    async def triggerRefresh(self):
-        self.log.debug_gui("triggerRefresh()")
-        await self.sidebar.triggerRefresh()
-
-    async def _getWebSocketURL(self):
-        if self.authenticated:
-            # Generating timestamp
-            timestamp = _genTimeStamp()
-
-            # To establish a websocket connection
-            # the client must query for a sec url
-            self.httpHandler.get(self.url + "/project", cookies=self.cj)
-            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp, cookies=self.cj)
-            self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
-            wsChannel = channelInfo.text[0:channelInfo.text.find(":")]
-            self.log.debug("Websocket wsChannel '%s'"%wsChannel)
-            return ("wss://" if self.https else "ws://") + self.domain + "/socket.io/1/websocket/"+wsChannel
 
 
 

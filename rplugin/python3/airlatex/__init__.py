@@ -25,9 +25,7 @@ class AirLatex:
         # initialize sidebar
         if not self.sidebar:
             self.sidebar = SideBar(self.nvim, self)
-            self.sidebar.initGUI()
-        else:
-            self.sidebar.initGUI()
+        self.sidebar.initGUI()
 
         # ensure session to exist
         if not self.session:
@@ -66,7 +64,7 @@ class AirLatex:
     @pynvim.function('AirLatex_Close', sync=True)
     def sidebarClose(self, args):
         if self.sidebar:
-            self.sidebar.cleanup()
+            self.session.cleanup()
             self.sidebar = None
 
     @pynvim.function('AirLatex_WriteBuffer', sync=True)

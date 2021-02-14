@@ -18,63 +18,45 @@ class SideBar:
         self.log = getLogger(__name__)
         self.log.debug_gui("SideBar initialized.")
         self.cursor = (4,0)
-        self.refresh_queue = Queue()
-        self.refresh_lock = Lock()
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
         self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
+        self.status = "Initializing"
+        self.uilock = Lock()
 
-        create_task(self.flush_refresh())
 
-    def cleanup(self):
-        self.airlatex.session.cleanup()
+
+    # ----------- #
+    # AsyncIO API #
+    # ----------- #
+
+    async def triggerRefresh(self, all=True):
+        self.log.debug_gui("trying to acquire (in trigger)")
+        await self.uilock.acquire()
+        self.log.debug_gui("triggerRefresh() -> event called")
+        self.nvim.async_call(self.listProjects, all)
+
+    async def updateStatus(self, msg):
+        self.log.debug_gui("trying to acquire (in update)")
+        await self.uilock.acquire()
+        self.status = msg
+        self.log.debug_gui("updateStatus()")
+        self.nvim.async_call(self.updateStatusLine)
+
 
 
     # ----------- #
     # GUI Drawing #
     # ----------- #
 
-    async def flush_refresh(self):
-        try:
-            self.log.debug_gui("flush_refresh() -> started loop")
-
-            # direct sending
-            while True:
-                arg = await self.refresh_queue.get()
-                self.log.debug_gui("flush_refresh() -> called")
-
-                # flush also all other waiting triggerRefresh-Calls
-                arg_new = False
-                # num = self.refresh_queue.qsize()
-                # for i in range(num):
-                #     arg2 = await self.refresh_queue.get()
-                #     arg_new = arg_new or arg2
-                #
-                # # in case something happend during drawing
-                # if num > 0 and arg_new:
-                #     self.refresh_queue.put(True)
-
-                self.log.debug_gui("flush(%s)" % str(arg))
-                if arg or arg_new:
-                    await self.refresh_lock.acquire()
-                    self.nvim.async_call(self.listProjects, (True))
-                    self.log.debug_gui("flush_refresh() -> done")
-                else:
-                    self.nvim.async_call(self.updateStatus)
-        except Exception as e:
-            self.log.exception(str(e))
-
-    async def triggerRefresh(self, all=True):
-        self.log.debug_gui("triggerRefresh() -> event called")
-        await self.refresh_queue.put(all)
-
-    def updateStatus(self):
-        if self.airlatex.session and hasattr(self,'statusline'):
-            self.log.debug_gui("updateStatus()")
+    def updateStatusLine(self, releaseLock=True):
+        if hasattr(self,'statusline') and len(self.statusline):
             # self.nvim.command('setlocal ma')
-            self.statusline[0] = self.statusline[0][:15] + self.airlatex.session.status
+            self.statusline[0] = self.statusline[0][:15] + self.status
             # self.nvim.command('setlocal noma')
+            if releaseLock and self.uilock.locked():
+                self.uilock.release()
 
     def bufferappend(self, arg, pos=[]):
         if self.buffer_write_i >= len(self.buffer):
@@ -85,14 +67,10 @@ class SideBar:
         if self.buffer_write_i == self.cursor[0]:
             self.cursorPos = pos
 
-    def vimCursorSet(self,row,col):
-        if self.buffer == self.nvim.current.window.buffer:
-            window = self.nvim.current.window
-            window.cursor = (row,col)
-
     def initGUI(self):
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
+        create_task(self.uilock.acquire())
         self.listProjects(False)
 
     def initSidebarBuffer(self):
@@ -147,10 +125,9 @@ class SideBar:
             self.cursorPos = []
             if self.airlatex.session:
                 projectList = self.airlatex.session.projectList
-                status = self.airlatex.session.status
             else:
                 projectList = []
-                status = "Starting Session"
+                self.status = "Starting Session"
 
             # Display Header
             if not overwrite or True:
@@ -203,9 +180,9 @@ class SideBar:
             self.bufferappend("  ")
             self.bufferappend("  ")
             self.bufferappend("  ")
-            self.bufferappend(" Status      : %s" % status, ["status"])
+            self.bufferappend(" Status      : %s" % self.status, ["status"])
             self.statusline = self.buffer.range(self.buffer_write_i, self.buffer_write_i+1)
-            self.updateStatus()
+            self.updateStatusLine(releaseLock=False)
             self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
             self.bufferappend(" Quit All    : enter", ["disconnect"])
             if not overwrite:
@@ -216,10 +193,8 @@ class SideBar:
             self.log.error(traceback.format_exc(e))
             self.nvim.err_write(traceback.format_exc(e)+"\n")
         finally:
-            create_task(self._refresh_lock_release())
-
-    async def _refresh_lock_release(self):
-        await self.refresh_lock.release()
+            if self.uilock.locked():
+                self.uilock.release()
 
     def listProjectStructure(self, rootFolder, pos, indent=0):
         self.log.debug_gui("listProjectStructure()")
@@ -251,6 +226,17 @@ class SideBar:
     # ------- #
     # Actions #
     # ------- #
+
+    def _toggle(self, dict, key, default=True):
+        if key not in dict:
+            dict[key] = default
+        else:
+            dict[key] = not dict[key]
+
+    def vimCursorSet(self,row,col):
+        if self.buffer == self.nvim.current.window.buffer:
+            window = self.nvim.current.window
+            window.cursor = (row,col)
 
     def cursorAt(self, pos):
 
@@ -293,7 +279,7 @@ class SideBar:
                     elif key == "del":
                         if "connected" in project and project["connected"]:
                             project["handler"].disconnect()
-                    self.triggerRefresh()
+                    create_task(self.triggerRefresh())
                 else:
                     create_task(self.airlatex.session.connectProject(project))
 
@@ -303,18 +289,12 @@ class SideBar:
         # is folder
         elif self.cursorPos[-1]["type"] == "folder":
             self._toggle(self.cursorPos[-1], "open")
-            self.triggerRefresh()
+            create_task(self.triggerRefresh())
 
         # is file
         elif self.cursorPos[-1]["type"] == "file":
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
             create_task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))
-
-    def _toggle(self, dict, key, default=True):
-        if key not in dict:
-            dict[key] = default
-        else:
-            dict[key] = not dict[key]
 
 
 
