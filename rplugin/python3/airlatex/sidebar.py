@@ -2,9 +2,9 @@ import pynvim
 from time import gmtime, strftime
 from asyncio import Queue, Lock, sleep, create_task
 from airlatex.documentbuffer import DocumentBuffer
-from logging import getLogger
-import traceback
-from airlatex.util import __version__
+from logging import getLogger, NOTSET
+from airlatex.util import __version__, pynvimCatchException
+
 
 
 class SideBar:
@@ -51,6 +51,7 @@ class SideBar:
     # GUI Drawing #
     # ----------- #
 
+    @pynvimCatchException
     def updateStatusLine(self, releaseLock=True):
         if hasattr(self,'statusline') and len(self.statusline):
             # self.nvim.command('setlocal ma')
@@ -59,6 +60,7 @@ class SideBar:
             if releaseLock and self.uilock.locked():
                 self.uilock.release()
 
+    @pynvimCatchException
     def bufferappend(self, arg, pos=[]):
         if self.buffer_write_i >= len(self.buffer):
             self.buffer.append(arg)
@@ -72,8 +74,9 @@ class SideBar:
         self.log.debug_gui("initGUI()")
         self.initSidebarBuffer()
         create_task(self.uilock.acquire())
-        self.listProjects(False)
+        self._listProjects(False)
 
+    @pynvimCatchException
     def initSidebarBuffer(self):
         self.log.debug_gui("initSidebarBuffer()")
 
@@ -117,87 +120,89 @@ class SideBar:
         self.nvim.command("nmap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
         self.nvim.command("nmap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
 
+    @pynvimCatchException
     def listProjects(self, overwrite=False):
+        self._listProjects(overwrite)
+
+    def _listProjects(self, overwrite=False):
         self.log.debug_gui("listProjects(%s)" % str(overwrite))
         if self.buffer == self.nvim.current.window.buffer:
             self.cursor = self.nvim.current.window.cursor
-        try:
-            # self.nvim.command('setlocal ma')
-            self.cursorPos = []
-            if self.airlatex.session:
-                projectList = self.airlatex.session.projectList
-            else:
-                projectList = []
-                self.status = "Starting Session"
 
-            # Display Header
-            if not overwrite or True:
-                self.buffer_write_i = 0
-                self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
-                self.bufferappend(" ")
-            else:
-                self.buffer_write_i = 4
+        # self.nvim.command('setlocal ma')
+        self.cursorPos = []
+        if self.airlatex.session:
+            projectList = self.airlatex.session.projectList
+        else:
+            projectList = []
+            self.status = "Starting Session"
 
-            # Display all Projects
-            if projectList is not None:
-                for i,project in enumerate(projectList):
-                    pos = [project]
+        # Display Header
+        if not overwrite or True:
+            self.buffer_write_i = 0
+            self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
+            self.bufferappend(" ")
+        else:
+            self.buffer_write_i = 4
 
-                    # skip deleted projects
-                    if "trashed" in project and project["trashed"]:
-                        continue
+        # Display all Projects
+        if projectList is not None:
+            for i,project in enumerate(projectList):
+                pos = [project]
 
-                    # skip archived projects
-                    if "archived" in project and project["archived"] and not self.showArchived:
-                        continue
+                # skip deleted projects
+                if "trashed" in project and project["trashed"]:
+                    continue
 
-                    # list project structure
+                # skip archived projects
+                if "archived" in project and project["archived"] and not self.showArchived:
+                    continue
+
+                # list project structure
+                if "open" in project and project["open"]:
+                    self.bufferappend(" "+self.symbol_open+" "+project["name"], pos)
+                    self.listProjectStructure(project["rootFolder"][0], pos)
+                else:
+                    self.bufferappend(" "+self.symbol_closed+" "+project["name"], pos)
+
+                # cursor-over info
+                if self.cursorAt([project]):
                     if "open" in project and project["open"]:
-                        self.bufferappend(" "+self.symbol_open+" "+project["name"], pos)
-                        self.listProjectStructure(project["rootFolder"][0], pos)
+                        self.bufferappend("   -----------------")
+                if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project]) or "msg" in project and project["msg"].startswith("Error")):
+                    if project["msg"].startswith("Error: "):
+                        self.bufferappend("   error: "+project['msg'][7:])
                     else:
-                        self.bufferappend(" "+self.symbol_closed+" "+project["name"], pos)
+                        self.bufferappend("   msg: "+project['msg'])
+                if self.cursorAt([project]):
+                    if "await" not in project:
+                        self.bufferappend("   awaits: [enter to connect]")
+                    else:
+                        self.bufferappend("   awaits: "+("↑" if not project["await"] else "↓"))
+                    self.bufferappend("   source: "+project['source'])
+                    self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
+                    self.bufferappend("   last change: "+project['lastUpdated'])
+                    if "lastUpdatedBy" in project:
+                        self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+(" "+project['lastUpdatedBy']['last_name'] if "last_name" in project["lastUpdatedBy"] else ""))
 
-                    # cursor-over info
-                    if self.cursorAt([project]):
-                        if "open" in project and project["open"]:
-                            self.bufferappend("   -----------------")
-                    if "msg" in project and ("connected" in project and project["connected"] or self.cursorAt([project]) or "msg" in project and project["msg"].startswith("Error")):
-                        if project["msg"].startswith("Error: "):
-                            self.bufferappend("   error: "+project['msg'][7:])
-                        else:
-                            self.bufferappend("   msg: "+project['msg'])
-                    if self.cursorAt([project]):
-                        if "await" not in project:
-                            self.bufferappend("   awaits: [enter to connect]")
-                        else:
-                            self.bufferappend("   awaits: "+("↑" if not project["await"] else "↓"))
-                        self.bufferappend("   source: "+project['source'])
-                        self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
-                        self.bufferappend("   last change: "+project['lastUpdated'])
-                        if "lastUpdatedBy" in project:
-                            self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+(" "+project['lastUpdatedBy']['last_name'] if "last_name" in project["lastUpdatedBy"] else ""))
+        # Info
+        self.bufferappend("  ")
+        self.bufferappend("  ")
+        self.bufferappend("  ")
+        self.bufferappend(" Status      : %s" % self.status, ["status"])
+        self.statusline = self.buffer.range(self.buffer_write_i, self.buffer_write_i+1)
+        self.updateStatusLine(releaseLock=False)
+        self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
+        self.bufferappend(" Quit All    : enter", ["disconnect"])
+        if not overwrite:
+            self.vimCursorSet(3,1)
+        del(self.buffer[self.buffer_write_i:len(self.buffer)])
+        # self.nvim.command('setlocal noma')
 
-            # Info
-            self.bufferappend("  ")
-            self.bufferappend("  ")
-            self.bufferappend("  ")
-            self.bufferappend(" Status      : %s" % self.status, ["status"])
-            self.statusline = self.buffer.range(self.buffer_write_i, self.buffer_write_i+1)
-            self.updateStatusLine(releaseLock=False)
-            self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
-            self.bufferappend(" Quit All    : enter", ["disconnect"])
-            if not overwrite:
-                self.vimCursorSet(3,1)
-            del(self.buffer[self.buffer_write_i:len(self.buffer)])
-            # self.nvim.command('setlocal noma')
-        except Exception as e:
-            self.log.error(traceback.format_exc(e))
-            self.nvim.err_write(traceback.format_exc(e)+"\n")
-        finally:
-            if self.uilock.locked():
-                self.uilock.release()
+        if self.uilock.locked():
+            self.uilock.release()
 
+    @pynvimCatchException
     def listProjectStructure(self, rootFolder, pos, indent=0):
         self.log.debug_gui("listProjectStructure()")
 
@@ -229,17 +234,20 @@ class SideBar:
     # Actions #
     # ------- #
 
+    @pynvimCatchException
     def _toggle(self, dict, key, default=True):
         if key not in dict:
             dict[key] = default
         else:
             dict[key] = not dict[key]
 
+    @pynvimCatchException
     def vimCursorSet(self,row,col):
         if self.buffer == self.nvim.current.window.buffer:
             window = self.nvim.current.window
             window.cursor = (row,col)
 
+    @pynvimCatchException
     def cursorAt(self, pos):
 
         # no pos given
@@ -257,6 +265,7 @@ class SideBar:
         return True
 
 
+    @pynvimCatchException
     def cursorAction(self, key="enter"):
         self.log.debug_gui("cursorAction(%s)" % key)
 

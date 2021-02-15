@@ -1,5 +1,7 @@
 import time
 import logging
+import traceback
+from logging import NOTSET
 
 
 __version__ = "0.2"
@@ -59,4 +61,23 @@ def init_logger():
 
     return log
 
+
+
+def pynvimCatchException(fn, alt=None):
+    def wrapped(self, *args, **kwargs):
+        try:
+            return fn(self, *args, **kwargs)
+        except Exception as e:
+            self.status = "Error: %s. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code." % str(e)
+            self.updateStatusLine()
+
+            if self.log.level == NOTSET:
+                self.nvim.err_write(traceback.format_exc(e)+"\n")
+            else:
+                self.log.exception("Uncatched exception occured. Please consider the log file.")
+                self.log.exception(str(e))
+
+            if alt is not None:
+                return alt
+    return wrapped
 
