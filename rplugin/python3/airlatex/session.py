@@ -99,7 +99,7 @@ class AirLatexSession:
     # api # (to be used by pynvim.plugin)
     # --- #
 
-    async def cleanup(self):
+    async def cleanup(self, msg="Disconnected"):
         """
         Disconnects all connected AirLatexProjects.
         """
@@ -107,7 +107,8 @@ class AirLatexSession:
         for p in self.projectList:
             if "handler" in p:
                 p["handler"].disconnect()
-        create_task(self.sidebar.updateStatus("Disconnected"))
+            p["connected"] = False
+        create_task(self.sidebar.updateStatus(msg))
 
     async def login(self):
         """

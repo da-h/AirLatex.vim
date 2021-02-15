@@ -372,7 +372,7 @@ class AirLatexProject:
         except (gen.Return, StopIteration):
             raise
         except Exception as e:
-            await self.sidebarMsg("Error: "+type(e)+" "+str(e))
+            await self.sidebarMsg("Error: "+type(e).__name__+": "+str(e))
             raise
 
     async def keep_alive(self):

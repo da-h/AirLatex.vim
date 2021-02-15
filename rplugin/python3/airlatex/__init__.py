@@ -1,3 +1,4 @@
+import traceback
 import pynvim
 import platform
 from sys import version_info
@@ -30,7 +31,10 @@ class AirLatex:
         log.info("System Info:")
         log.info("  - Python Version: %i.%i" % (version_info.major, version_info.minor))
         log.info("  - OS: %s (%s)" % (platform.system(), platform.release()))
+        self.log = log
 
+        # initialize exception handling for asyncio
+        self.nvim.loop.set_exception_handler(self.asyncCatchException)
 
         # initialize sidebar
         if not self.sidebar:
@@ -82,3 +86,20 @@ class AirLatex:
         buffer = self.nvim.current.buffer
         if buffer in DocumentBuffer.allBuffers:
             DocumentBuffer.allBuffers[buffer].writeBuffer()
+
+    def asyncCatchException(self, loop, context):
+        message = context.get('message')
+        if not message:
+            message = 'Unhandled exception in event loop'
+
+        exception = context.get('exception')
+        if exception is not None:
+            exc_info = (type(exception), exception, exception.__traceback__)
+        else:
+            exc_info = False
+
+        self.log.error(message, exc_info=exc_info)
+        self.log.info("Shutting down...")
+        loop.create_task(self.session.cleanup("Error: '%s'." % message))
+
+
