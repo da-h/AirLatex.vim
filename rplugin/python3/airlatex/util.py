@@ -21,6 +21,12 @@ logging_settings={
     "gui": True
 }
 
+class CustomLogRecord(logging.LogRecord):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.filename = self.filename.split(".")[0]
+        self.origin = f"{self.filename} / {self.funcName} #{self.lineno:<4}"
+
 def init_logger():
     log = logging.getLogger("AirLatex")
 
@@ -40,7 +46,8 @@ def init_logger():
     if level != "NOTSET":
 
         # formatter
-        f = logging.Formatter('%(name)s #%(lineno)d: %(message)s')
+        logging.setLogRecordFactory(CustomLogRecord)
+        f = logging.Formatter('%(origin)40s: %(message)s')
 
         # handler
         h = logging.FileHandler(file, "w")
