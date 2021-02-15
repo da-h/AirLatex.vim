@@ -1,6 +1,10 @@
 import time
 import logging
 
+
+__version__ = "0.2"
+
+
 # Generate a timstamp with a length of 13 numbers
 def _genTimeStamp():
     t = time.time()

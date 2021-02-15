@@ -4,6 +4,7 @@ from asyncio import Queue, Lock, sleep, create_task
 from airlatex.documentbuffer import DocumentBuffer
 from logging import getLogger
 import traceback
+from airlatex.util import __version__
 
 
 class SideBar:
@@ -17,7 +18,7 @@ class SideBar:
         self.cursorPos = []
         self.log = getLogger("AirLatex")
         self.log.debug_gui("SideBar initialized.")
-        self.cursor = (4,0)
+        self.cursor = (2,0)
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
         self.symbol_closed=self.nvim.eval("g:AirLatexArrowClosed")
@@ -132,10 +133,8 @@ class SideBar:
             # Display Header
             if not overwrite or True:
                 self.buffer_write_i = 0
-                self.bufferappend("  ")
-                self.bufferappend(" AirLatex")
-                self.bufferappend(" ========")
-                self.bufferappend("  ")
+                self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
+                self.bufferappend(" ")
             else:
                 self.buffer_write_i = 4
 
@@ -189,7 +188,7 @@ class SideBar:
             self.bufferappend(" Last Update : "+strftime("%H:%M:%S",self.lastUpdate), ["lastupdate"])
             self.bufferappend(" Quit All    : enter", ["disconnect"])
             if not overwrite:
-                self.vimCursorSet(5,1)
+                self.vimCursorSet(3,1)
             del(self.buffer[self.buffer_write_i:len(self.buffer)])
             # self.nvim.command('setlocal noma')
         except Exception as e:

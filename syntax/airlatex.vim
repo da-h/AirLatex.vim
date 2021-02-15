@@ -1,4 +1,3 @@
-syn match AirLatexTitle #^\s\w\+\n\s=\+#
 exec 'syn match AirLatexProjLine #^\s' . escape(g:AirLatexArrowClosed, '~') . '.*#'
 exec 'syn match AirLatexProjLine #^\s' . escape(g:AirLatexArrowOpen, '~') . '.*#'
 
@@ -19,8 +18,9 @@ syn match AirLatexStatusValue    #:\zs.\+# contained containedin=AirLatexStatus
 syn match AirLatexStatusOnline   #Online# contained containedin=AirLatexStatusValue
 syn match AirLatexStatusOffline  #Offline# contained containedin=AirLatexStatusValue
 
+syn match AirLatexTitle "\%1l.*"
 
-hi def link AirLatexTitle Title
+hi def link AirLatexTitle Comment
 hi def link AirLatexProjLine Special
 
 hi def link AirLatexFolderLine Special

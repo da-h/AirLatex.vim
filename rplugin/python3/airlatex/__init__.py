@@ -5,10 +5,9 @@ from asyncio import create_task
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
-from airlatex.util import logging_settings, init_logger
+from airlatex.util import logging_settings, init_logger, __version__
 
 
-__version__ = "0.2"
 
 
 @pynvim.plugin
