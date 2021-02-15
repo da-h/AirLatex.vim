@@ -5,12 +5,13 @@ from tornado.websocket import websocket_connect
 import re
 from itertools import count
 import json
-from airlatex.util import _genTimeStamp, getLogger
+from airlatex.util import _genTimeStamp
 import time
 from tornado.locks import Lock, Event
 from logging import DEBUG
 from tornado.httpclient import HTTPRequest
-from asyncio import Queue
+from asyncio import Queue, wait_for, TimeoutError
+from logging import getLogger
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -38,7 +39,7 @@ class AirLatexProject:
         self.requests = {}
         self.cursors = {}
         self.documents = {}
-        self.log = getLogger(__name__)
+        self.log = getLogger("AirLatex")
         self.ops_queue = Queue()
 
     async def start(self):

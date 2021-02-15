@@ -1,9 +1,9 @@
 import pynvim
 from difflib import SequenceMatcher
 from threading import RLock
-from airlatex.util import getLogger
 from hashlib import sha1
 from asyncio import create_task
+from logging import getLogger
 
 if "allBuffers" not in globals():
     allBuffers = {}
@@ -11,7 +11,7 @@ class DocumentBuffer:
     allBuffers = allBuffers
 
     def __init__(self, path, nvim):
-        self.log = getLogger(__name__)
+        self.log = getLogger("AirLatex")
         self.path = path
         self.nvim = nvim
         self.project_handler = path[0]["handler"]

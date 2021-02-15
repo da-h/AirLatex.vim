@@ -1,4 +1,5 @@
 import time
+import logging
 
 # Generate a timstamp with a length of 13 numbers
 def _genTimeStamp():
@@ -10,15 +11,14 @@ def _genTimeStamp():
     return t
 
 # get logging
-import logging
 logging_settings={
     "level": "NOTSET",
     "file": "AirLatex.log",
     "gui": True
 }
 
-def getLogger(name):
-    log = logging.getLogger(name)
+def init_logger():
+    log = logging.getLogger("AirLatex")
 
     # user settings
     level=logging_settings["level"]
@@ -39,7 +39,7 @@ def getLogger(name):
         f = logging.Formatter('%(name)s #%(lineno)d: %(message)s')
 
         # handler
-        h = logging.FileHandler(file)
+        h = logging.FileHandler(file, "w")
         h.setFormatter(f)
 
         # logger settings

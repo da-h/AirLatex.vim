@@ -10,8 +10,9 @@ from queue import Queue
 from os.path import expanduser
 import re
 from airlatex.project_handler import AirLatexProject
-from airlatex.util import _genTimeStamp, getLogger
+from airlatex.util import _genTimeStamp
 from http.cookiejar import CookieJar
+from logging import getLogger
 
 
 
@@ -34,7 +35,7 @@ class AirLatexSession:
         self.authenticated = False
         self.httpHandler = requests.Session()
         self.projectList = []
-        self.log = getLogger(__name__)
+        self.log = getLogger("AirLatex")
 
         self._updateCookies()
 

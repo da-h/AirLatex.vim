@@ -4,7 +4,7 @@ from asyncio import create_task
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
-from airlatex.util import logging_settings
+from airlatex.util import logging_settings, init_logger
 
 
 @pynvim.plugin
@@ -21,6 +21,7 @@ class AirLatex:
         # update user settings for logging
         logging_settings["level"]=self.nvim.eval("g:AirLatexLogLevel")
         logging_settings["file"]=self.nvim.eval("g:AirLatexLogFile")
+        log = init_logger()
 
         # initialize sidebar
         if not self.sidebar:

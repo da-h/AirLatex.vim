@@ -2,7 +2,7 @@ import pynvim
 from time import gmtime, strftime
 from asyncio import Queue, Lock, sleep, create_task
 from airlatex.documentbuffer import DocumentBuffer
-from airlatex.util import getLogger
+from logging import getLogger
 import traceback
 
 
@@ -15,7 +15,7 @@ class SideBar:
         self.buffer = None
         self.buffer_write_i = 0
         self.cursorPos = []
-        self.log = getLogger(__name__)
+        self.log = getLogger("AirLatex")
         self.log.debug_gui("SideBar initialized.")
         self.cursor = (4,0)
 
