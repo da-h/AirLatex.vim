@@ -37,6 +37,7 @@ class AirLatexSession:
         self.projectList = []
         self.log = getLogger("AirLatex")
 
+        self.wait_for = self.nvim.eval("g:AirLatexWebsocketTimeout")
         self._updateCookies()
 
 
@@ -185,7 +186,7 @@ class AirLatexSession:
 
         # start connection
         anim_status.cancel()
-        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie="; ".join(c.name + "=" + c.value for c in self.cj))
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie="; ".join(c.name + "=" + c.value for c in self.cj), wait_for=self.wait_for)
         create_task(airlatexproject.start())
 
 

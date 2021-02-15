@@ -52,4 +52,10 @@ if !exists("g:AirLatexShowArchived")
     let g:AirLatexShowArchived=0
 endif
 
+if !exists("g:AirLatexWebsocketTimeout")
+    let g:AirLatexWebsocketTimeout=10
+endif
+
+
+
 " vim: set sw=4 sts=4 et fdm=marker:

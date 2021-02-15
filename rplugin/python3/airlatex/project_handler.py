@@ -12,6 +12,7 @@ from logging import DEBUG
 from tornado.httpclient import HTTPRequest
 from asyncio import Queue, wait_for, TimeoutError
 from logging import getLogger
+from asyncio import sleep
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -24,7 +25,7 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 
 class AirLatexProject:
 
-    def __init__(self, url, project, used_id, sidebar, cookie=None):
+    def __init__(self, url, project, used_id, sidebar, cookie=None, wait_for=15):
         project["handler"] = self
 
         self.sidebar = sidebar
@@ -32,6 +33,7 @@ class AirLatexProject:
         self.used_id = used_id
         self.project = project
         self.url = url
+        self.wait_for = wait_for if str(wait_for).isnumeric() else None
         self.cookie = cookie
         self.url_base = url.split("/")[2]
         self.command_counter = count(1)
@@ -142,6 +144,7 @@ class AirLatexProject:
             "hash": content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
         }
 
+        # notify server of local change
         self.log.debug("Sending %i changes to document %s (ver %i)." % (len(ops_buffer), document["_id"], document["version"]))
         await self.send("cmd",{
             "name":"applyOtUpdate",
@@ -151,8 +154,14 @@ class AirLatexProject:
             ]
         }, event=event)
 
-        self.log.debug(" -> Waiting for server to accept changes changes to documet %s (ver %i) -> wait" % (document["_id"], document["version"]))
-        await event.wait()
+        # server needs to answer before proceeding
+        if self.wait_for is None:
+            await event.wait
+        else:
+            try:
+                await wait_for(event.wait(), timeout=self.wait_for)
+            except TimeoutError:
+                await self.disconnect("Error: The server did not answer for %d seconds." % self.wait_for)
         await self.gui_await(False)
         self.log.debug(" -> Waiting for server to accept changes  changes to documet %s (ver %i)-> done" % (document["_id"], document["version"]))
 
