@@ -1,10 +1,14 @@
 import pynvim
-import sys
+import platform
+from sys import version_info
 from asyncio import create_task
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import logging_settings, init_logger
+
+
+__version__ = "0.2"
 
 
 @pynvim.plugin
@@ -18,10 +22,16 @@ class AirLatex:
 
     @pynvim.command('AirLatex', nargs=0, sync=True)
     def openSidebar(self):
+
         # update user settings for logging
         logging_settings["level"]=self.nvim.eval("g:AirLatexLogLevel")
         logging_settings["file"]=self.nvim.eval("g:AirLatexLogFile")
         log = init_logger()
+        log.info("Starting AirLatex (Version %s)" % __version__)
+        log.info("System Info:")
+        log.info("  - Python Version: %i.%i" % (version_info.major, version_info.minor))
+        log.info("  - OS: %s (%s)" % (platform.system(), platform.release()))
+
 
         # initialize sidebar
         if not self.sidebar:
