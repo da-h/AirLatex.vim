@@ -38,6 +38,7 @@ endif
 if !exists("g:AirLatexLogFile")
     let g:AirLatexLogFile="AirLatex.log"
 endif
+autocmd BufNewFile,BufRead AirLatex.log set filetype=airlatex_log
 
 if !exists("g:AirLatexCookieBrowser")
     let g:AirLatexCookieBrowser="auto"
