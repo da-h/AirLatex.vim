@@ -5,7 +5,7 @@ import json
 import time
 import tempfile
 from threading import Thread, currentThread
-from asyncio import Lock, sleep, run_coroutine_threadsafe, create_task
+from asyncio import Lock, sleep, create_task
 from queue import Queue
 from os.path import expanduser
 import re
@@ -45,7 +45,7 @@ class AirLatexSession:
 
     def _updateCookies(self):
         """
-        Queries cookies using browser_cookie3 and caches them (self.cj, self.cj_str).
+        Queries cookies using browser_cookie3 and caches them (self.cj).
         """
 
         # guess cookie dir (browser_cookie3 does that already mostly)
@@ -64,7 +64,6 @@ class AirLatexSession:
             if c.domain in self.url or self.url in c.domain:
                 self.log.debug("Found Cookie for domain '%s' named '%s'" % (c.domain, c.name))
                 self.cj.set_cookie(c)
-        self.cj_str = "; ".join(c.name + "=" + c.value for c in self.cj)
 
     async def _makeStatusAnimation(self, str):
         """
@@ -123,6 +122,12 @@ class AirLatexSession:
                 redirect = await self.nvim.loop.run_in_executor(None, get)
                 anim_status.cancel()
                 if redirect.ok:
+
+                    # overwrite cookies in case there has been an update
+                    for name, value in self.httpHandler.cookies.get_dict().items():
+                        cookie = requests.cookies.create_cookie(name, value)
+                        self.cj.set_cookie(cookie)
+
                     self.authenticated = True
                     await self.updateProjectList()
                     return True
@@ -178,7 +183,7 @@ class AirLatexSession:
 
         # start connection
         anim_status.cancel()
-        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=self.cj_str)
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie="; ".join(c.name + "=" + c.value for c in self.cj))
         create_task(airlatexproject.start())
 
 
