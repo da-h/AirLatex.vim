@@ -40,10 +40,9 @@ class AirLatexProject:
         self.documents = {}
         self.log = getLogger(__name__)
         self.ops_queue = Queue()
-        self.log.debug("init done")
 
     async def start(self):
-        self.log.debug("start")
+        self.log.debug("Starting connection to server.")
         # start tornado event loop & related callbacks
         IOLoop.current().spawn_callback(self.sendOps_flush)
         PeriodicCallback(self.keep_alive, 20000).start()
@@ -52,24 +51,24 @@ class AirLatexProject:
 
     async def send(self,message_type,message=None,event=None):
         if message_type == "keep_alive":
-            self.log.debug("send keep_alive")
+            self.log.debug("Send keep_alive.")
             self.ws.write_message("2::")
             return
         assert message is not None
         message_content = json.dumps(message) if isinstance(message, dict) else message
         message["event"] = event
         if message_type == "update":
-            self.log.debug("send update: "+message_content)
+            self.log.debug("Sending update: "+message_content)
             self.ws.write_message("5:::"+message_content)
         elif message_type == "cmd":
             cmd_id = next(self.command_counter)
             msg = "5:" + str(cmd_id) + "+::" + message_content
-            self.log.debug("send cmd: "+msg)
+            self.log.debug("Sendng cmd: "+msg)
             self.requests[str(cmd_id)] = message
             self.ws.write_message(msg)
 
     async def sidebarMsg(self, msg):
-        self.log.debug("sidebarMsg: %s" % msg)
+        self.log.debug_gui("sidebarMsg: %s" % msg)
         self.project["msg"] = msg
         await self.sidebar.triggerRefresh()
 
@@ -81,7 +80,7 @@ class AirLatexProject:
         if doc_id in self.documents:
             doc = self.documents[doc_id]
             buf = doc["buffer"]
-            self.log.debug("cmd="+command)
+            self.log.debug_gui("bufferDo cmd="+command)
             if command == "applyUpdate":
                 buf.applyUpdate(data)
             elif command == "write":
@@ -111,7 +110,6 @@ class AirLatexProject:
 
     # actual sending of ops
     async def _sendOps(self, document, content_hash, ops=[]):
-        self.log.debug("_sendOps(doc=%s, ops=%s)" % (document["_id"], str(len(ops))))
 
         # append new ops to buffer
         document["ops_buffer"] += ops
@@ -123,7 +121,6 @@ class AirLatexProject:
         # wait if awaiting server response
         event = Event()
         await self.gui_await(True)
-        self.log.debug("ops await accept -> new request")
 
         # clean buffer for next call
         ops_buffer, document["ops_buffer"] = document["ops_buffer"], []
@@ -144,6 +141,7 @@ class AirLatexProject:
             "hash": content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
         }
 
+        self.log.debug("Sending %i changes to document %s (ver %i)." % (len(ops_buffer), document["_id"], document["version"]))
         await self.send("cmd",{
             "name":"applyOtUpdate",
             "args": [
@@ -151,31 +149,26 @@ class AirLatexProject:
                 obj_to_send
             ]
         }, event=event)
-        self.log.debug("ops await accept -> wait")
 
+        self.log.debug(" -> Waiting for server to accept changes changes to documet %s (ver %i) -> wait" % (document["_id"], document["version"]))
         await event.wait()
         await self.gui_await(False)
-        self.log.debug("ops await accept -> done")
+        self.log.debug(" -> Waiting for server to accept changes  changes to documet %s (ver %i)-> done" % (document["_id"], document["version"]))
 
     # sendOps whenever events appear in queue
     # (is only called in constructor)
     async def sendOps_flush(self):
-        self.log.debug("starting sendOps_flush()")
 
         # direct sending
         # async for document, ops in self.ops_queue:
-        #     self.log.debug("sendOps_flush() -> _sendOps")
         #     await self._sendOps(document, ops)
-        #     self.log.debug("sendOps_flush() -> _sendOps done")
 
         # collects ops and sends them in a batch, server is ready
         while True:
-            self.log.debug("sendOps_flush() -> waiting")
             all_ops = {}
 
             # await first element
             document, content_hash, ops = await self.ops_queue.get()
-            self.log.debug("sendOps_flush() -> got first")
             if document["_id"] not in all_ops:
                 all_ops[document["_id"]] = ops
             else:
@@ -184,17 +177,13 @@ class AirLatexProject:
             # get also all other elements that are currently in queue
             num = self.ops_queue.qsize()
             for i in range(num):
-                self.log.debug("sendOps_flush() -> got another "+str(num))
                 document, content_hash, ops = await self.ops_queue.get()
-                self.log.debug("sendOps_flush() -> got another")
                 if document["_id"] not in all_ops:
                     all_ops[document["_id"]] = ops
                 else:
                     all_ops[document["_id"]] += ops
-                self.log.debug("sendOps_flush() -> got another end")
 
             # apply all ops one after another
-            self.log.debug("sendOps_flush() -> sending")
             for doc_id, ops in all_ops.items():
                 document = self.documents[doc_id]
                 await self._sendOps(document, content_hash, ops)
@@ -226,7 +215,7 @@ class AirLatexProject:
     async def disconnect(self, msg="Disconnected."):
         # del self.project["handler"]
         # self.msg_thread.do_run = False
-        self.log.debug("Connection Closed")
+        self.log.debug("Connection Closed. Reason:" + msg)
         self.project["msg"] = msg
         self.project["open"] = False
         self.project["connected"] = False
@@ -237,7 +226,7 @@ class AirLatexProject:
         try:
             await self.sidebarMsg("Connecting Websocket.")
             self.project["connected"] = True
-            self.log.debug("Websocket Connecting to "+self.url)
+            self.log.debug("Initializing websocket connection to "+self.url)
             request = HTTPRequest(self.url, headers={'Cookie': self.cookie})
             self.ws = await websocket_connect(request)
         except Exception as e:
@@ -254,7 +243,7 @@ class AirLatexProject:
                 #     await self.sidebarMsg("Connection Closed")
                 #     self.ws = None
                 #     break
-                self.log.debug("answer: "+msg)
+                self.log.debug("Raw server answer: "+msg)
 
                 # parse the code
                 code, await_id, await_mult, answer_id, answer_mult, data = codere.match(msg).groups()

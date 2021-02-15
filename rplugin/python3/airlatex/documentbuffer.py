@@ -26,7 +26,7 @@ class DocumentBuffer:
         return self.document["name"].split(".")[-1]
 
     def initDocumentBuffer(self):
-        self.log.debug_gui("initDocumentBuffer()")
+        self.log.debug_gui("initDocumentBuffer")
 
         # Creating new Buffer
         self.nvim.command('wincmd w')
@@ -53,7 +53,7 @@ class DocumentBuffer:
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
     def write(self, lines):
-        self.log.debug_gui("write()")
+        self.log.debug("writing to buffer")
 
         def writeLines(buffer,lines):
             buffer[0] = lines[0]
@@ -63,20 +63,20 @@ class DocumentBuffer:
         self.nvim.async_call(writeLines,self.buffer,lines)
 
     def updateRemoteCursor(self, cursor):
-        self.log.debug_gui("updateRemoteCursor()")
+        self.log.debug("updateRemoteCursor")
         # def updateRemoteCursor(cursor, nvim):
         #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
         # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)
 
     def writeBuffer(self):
-        self.log.debug_gui("writeBuffer()")
+        self.log.debug("writeBuffer: calculating changes to send")
 
         # update CursorPosition
         create_task(self.project_handler.updateCursor(self.document, self.nvim.current.window.cursor))
 
         # skip if not yet initialized
         if self.saved_buffer is None:
-            self.log.debug_gui("writeBuffer() -> buffer not yet initialized")
+            self.log.debug("writeBuffer: -> buffer not yet initialized")
             return
 
         # nothing to do
@@ -87,7 +87,7 @@ class DocumentBuffer:
                     skip = False
                     break
             if skip:
-                self.log.debug_gui("writeBuffer() -> done (hashtest: nothing to do)")
+                self.log.debug("writeBuffer: -> done (hashtest says nothing to do)")
                 return
 
         # cummulative position of line
@@ -149,7 +149,7 @@ class DocumentBuffer:
 
         # nothing to do
         if len(ops) == 0:
-            self.log.debug_gui("writeBuffer() -> done (sequencematcher: nothing to do)")
+            self.log.debug("writeBuffer: -> done (sequencematcher says nothing to do)")
             return
 
         # reverse, as last op should be applied first
@@ -171,20 +171,17 @@ class DocumentBuffer:
 
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
-        self.log.debug_gui("writeBuffer() -> sending ops")
+        self.log.debug(" -> sending ops")
         create_task(self.project_handler.sendOps(self.document, content_hash, ops))
-        self.log.debug_gui("writeBuffer() -> done")
 
     def applyUpdate(self,ops):
-        self.log.debug_gui("applyUpdate()")
+        self.log.debug("apply server updates to buffer")
 
         # adapt version
         if "v" in ops:
-            self.log.debug("'v':"+str(self.document["version"]))
             v = ops["v"]
             if v >= self.document["version"]:
                 self.document["version"] = v+1
-            self.log.debug("'v':"+str(self.document["version"]))
 
         # do nothing if no op included
         if not 'op' in ops:

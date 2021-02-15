@@ -36,7 +36,7 @@ def getLogger(name):
     if level != "NOTSET":
 
         # formatter
-        f = logging.Formatter('[%(levelname)s] %(name)s #%(lineno)d: (%(threadName)-10s) %(message)s')
+        f = logging.Formatter('%(name)s #%(lineno)d: %(message)s')
 
         # handler
         h = logging.FileHandler(file)
