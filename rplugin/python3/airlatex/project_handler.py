@@ -292,7 +292,8 @@ class AirLatexProject:
                     # client Connected => delete from cursor list
                     elif data["name"] == "clientTracking.clientUpdated":
                         for cursor in data["args"]:
-                            self.cursors[cursor["id"]].update(cursor)
+                            if "id" in cursor and cursor["id"] in self.cursors:
+                                self.cursors[cursor["id"]].update(cursor)
                         await self.updateRemoteCursor(data["args"])
 
                     # client Disconnected => delete from cursor list
