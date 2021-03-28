@@ -4,7 +4,7 @@ import traceback
 from logging import NOTSET
 
 
-__version__ = "0.2"
+__version__ = "0.3"
 
 
 # Generate a timstamp with a length of 13 numbers

@@ -73,6 +73,16 @@ class AirLatex:
                 self.sidebar.log.error(str(e))
                 self.nvim.out_write(str(e)+"\n")
 
+    @pynvim.command('AirLatexResetPassword', nargs=0, sync=True)
+    def resetPassword(self):
+        DOMAIN = self.nvim.eval("g:AirLatexDomain")
+        username = self.nvim.eval("g:AirLatexUsername")
+        keyring.delete_password("airlatex_"+DOMAIN, username)
+        self.nvim.command("call inputsave()")
+        self.nvim.command("let user_input = input(\"Resetting password for '%s' and user '%s'.\nType it in to store it in keyring: \")" % (DOMAIN, username))
+        self.nvim.command("call inputrestore()")
+        keyring.set_password("airlatex_"+DOMAIN, username, self.nvim.eval("user_input"))
+
     @pynvim.function('AirLatex_SidebarRefresh', sync=False)
     def sidebarRefresh(self, args):
         if self.sidebar:
