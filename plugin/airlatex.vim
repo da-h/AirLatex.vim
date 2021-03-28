@@ -40,10 +40,6 @@ if !exists("g:AirLatexLogFile")
 endif
 autocmd BufNewFile,BufRead AirLatex.log set filetype=airlatex_log
 
-if !exists("g:AirLatexCookieBrowser")
-    let g:AirLatexCookieBrowser="auto"
-endif
-
 if !exists("g:AirLatexUseHTTPS")
     let g:AirLatexUseHTTPS=1
 endif

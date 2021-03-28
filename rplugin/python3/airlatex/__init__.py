@@ -1,4 +1,5 @@
 import traceback
+import keyring
 import pynvim
 import platform
 from sys import version_info
@@ -45,6 +46,15 @@ class AirLatex:
         if not self.session:
             DOMAIN = self.nvim.eval("g:AirLatexDomain")
             https = self.nvim.eval("g:AirLatexUseHTTPS")
+
+            # query credentials
+            username = self.nvim.eval("g:AirLatexUsername")
+            password = keyring.get_password("airlatex_"+DOMAIN, username)
+            while password is None:
+                self.storePassword()
+                password = keyring.get_password("airlatex_"+DOMAIN, username)
+
+            # connect
             try:
                 self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, self.nvim, https=https)
                 create_task(self.session.login())
@@ -86,6 +96,14 @@ class AirLatex:
         buffer = self.nvim.current.buffer
         if buffer in DocumentBuffer.allBuffers:
             DocumentBuffer.allBuffers[buffer].writeBuffer()
+
+    def storePassword(self):
+        domain = self.nvim.eval("g:AirLatexDomain")
+        username = self.nvim.eval("g:AirLatexUsername")
+        self.nvim.command("call inputsave()")
+        self.nvim.command("let user_input = input(\"No Password found for '%s' and user '%s'.\nType it in to store it in keyring: \")" % (domain, username))
+        self.nvim.command("call inputrestore()")
+        keyring.set_password("airlatex_"+domain, username, self.nvim.eval("user_input"))
 
     def asyncCatchException(self, loop, context):
         message = context.get('message')

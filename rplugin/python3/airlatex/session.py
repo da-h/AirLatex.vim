@@ -1,5 +1,5 @@
 import pynvim
-import browser_cookie3
+import keyring
 import requests
 import json
 import time
@@ -21,7 +21,7 @@ class AirLatexSession:
     def __init__(self, domain, servername, sidebar, nvim, https=True):
         """
         Manages the Session to the server:
-        - queries cookies & checks wether these suffice as authentication
+        - tries to login with credentials & checks wether these suffice as authentication
         - queries the project list
         - initializes AirLatexProject objects
         """
@@ -38,34 +38,12 @@ class AirLatexSession:
         self.log = getLogger("AirLatex")
 
         self.wait_for = self.nvim.eval("g:AirLatexWebsocketTimeout")
-        self._updateCookies()
+        self.username = self.nvim.eval("g:AirLatexUsername")
 
 
     # ------- #
     # helpers #
     # ------- #
-
-    def _updateCookies(self):
-        """
-        Queries cookies using browser_cookie3 and caches them (self.cj).
-        """
-
-        # guess cookie dir (browser_cookie3 does that already mostly)
-        browser   = self.nvim.eval("g:AirLatexCookieBrowser")
-        if browser == "auto":
-            cj = browser_cookie3.load()
-        elif browser.lower() == "firefox":
-            cj = browser_cookie3.firefox()
-        elif browser.lower() == "chrome" or browser.lower() == "chromium":
-            cj = browser_cookie3.chrome()
-        else:
-            raise ValueError("AirLatexCookieBrowser '%s' should be one of 'auto', 'firefox', 'chromium' or 'chrome'" % browser)
-
-        self.cj = CookieJar()
-        for c in cj:
-            if c.domain in self.url or self.url in c.domain:
-                self.log.debug("Found Cookie for domain '%s' named '%s'" % (c.domain, c.name))
-                self.cj.set_cookie(c)
 
     async def _makeStatusAnimation(self, str):
         """
@@ -88,8 +66,8 @@ class AirLatexSession:
 
             # To establish a websocket connection
             # the client must query for a sec url
-            self.httpHandler.get(self.url + "/project", cookies=self.cj)
-            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp, cookies=self.cj)
+            self.httpHandler.get(self.url + "/project")
+            channelInfo = self.httpHandler.get(self.url + "/socket.io/1/?t="+timestamp)
             self.log.debug("Websocket channelInfo '%s'"%channelInfo.text)
             wsChannel = channelInfo.text[0:channelInfo.text.find(":")]
             self.log.debug("Websocket wsChannel '%s'"%wsChannel)
@@ -117,8 +95,34 @@ class AirLatexSession:
         """
         self.log.debug("login()")
         if not self.authenticated:
-            anim_status = create_task(self._makeStatusAnimation("Connecting"))
+            anim_status = create_task(self._makeStatusAnimation("Login"))
 
+            # get csrf token
+            loginpage_request = lambda: self.httpHandler.get(self.url + "/login")
+            loginpage = await self.nvim.loop.run_in_executor(None, loginpage_request)
+            if loginpage.ok:
+                csrf = re.search('value="([^"]*)"',re.search('<input\s[^>]*name="_csrf"[^>]*>', loginpage.text)[0])[1]
+
+            # try to login
+            try:
+                data = {
+                    "email": self.username,
+                    "password": keyring.get_password("airlatex_"+self.domain, self.username)
+                }
+                if csrf is not None:
+                    data["_csrf"] = csrf
+                login = lambda: self.httpHandler.post(self.url + "/login", data=data)
+                login_response = await self.nvim.loop.run_in_executor(None, login)
+                anim_status.cancel()
+                if not login_response.ok:
+                    with tempfile.NamedTemporaryFile(delete=False) as f:
+                        f.write(login_response.text.encode())
+                        create_task(self.sidebar.updateStatus("Could not login using the credentials. You can check the response page under: %s" % f.name))
+                        return False
+            except Exception as e:
+                create_task(self.sidebar.updateStatus("Login failed: "+str(e)))
+
+            anim_status = create_task(self._makeStatusAnimation("Connecting"))
             # check if cookie found by testing if projects redirects to login page
             try:
                 get = lambda: self.httpHandler.get(self.url + "/project", cookies=self.cj)
