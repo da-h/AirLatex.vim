@@ -173,7 +173,8 @@ class AirLatexSession:
             projectPage = (await self.nvim.loop.run_in_executor(None, get))
             anim_status.cancel()
 
-            if not projectPage.ok:
+            meta = re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text) if projectPage.ok else None
+            if not projectPage.ok or meta is None:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.text.encode())
                     self.authenticated = False
@@ -183,7 +184,7 @@ class AirLatexSession:
                 return []
 
             try:
-                project_data_escaped = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text)[0])[1]
+                project_data_escaped = re.search('content="([^"]*)"',meta[0])[1]
                 data = html.unescape(project_data_escaped)
                 self.log.debug("project_data="+data)
                 data = json.loads(data)
@@ -196,26 +197,9 @@ class AirLatexSession:
                 create_task(self.sidebar.triggerRefresh())
             except Exception as e:
 
-                # fallback to old overleaf version
-                try:
-                    pos_script_1  = projectPage.text.find("<script id=\"data\"")
-                    pos_script_2 = projectPage.text.find(">", pos_script_1 + 20)
-                    pos_script_close = projectPage.text.find("</script", pos_script_2 + 1)
-                    if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
-                        return []
-                    data = projectPage.text[pos_script_2+1:pos_script_close]
-                    data = json.loads(data)
-                    self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage.text)[1]
-                    create_task(self.sidebar.updateStatus("Online"))
-
-                    self.projectList = data["projects"]
-                    self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
-                    create_task(self.sidebar.triggerRefresh())
-
-                except Exception as e:
-                    with tempfile.NamedTemporaryFile(delete=False) as f:
-                        f.write(projectPage.text.encode())
-                        create_task(self.sidebar.updateStatus("Could not retrieve project list: %s. You can check the response page under: %s " % (str(e),f.name)))
+                with tempfile.NamedTemporaryFile(delete=False) as f:
+                    f.write(projectPage.text.encode())
+                    create_task(self.sidebar.updateStatus("Could not retrieve project list: %s. You can check the response page under: %s " % (str(e),f.name)))
 
     async def connectProject(self, project):
         """
