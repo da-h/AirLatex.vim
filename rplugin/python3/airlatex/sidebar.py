@@ -179,9 +179,12 @@ class SideBar:
                         self.bufferappend("   awaits: [enter to connect]")
                     else:
                         self.bufferappend("   awaits: "+("↑" if not project["await"] else "↓"))
-                    self.bufferappend("   source: "+project['source'])
-                    self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
-                    self.bufferappend("   last change: "+project['lastUpdated'])
+                    if "source" in project:
+                        self.bufferappend("   source: "+project['source'])
+                    if "owner" in project:
+                        self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
+                    if "lastUpdated" in project:
+                        self.bufferappend("   last change: "+project['lastUpdated'])
                     if "lastUpdatedBy" in project:
                         self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+(" "+project['lastUpdatedBy']['last_name'] if "last_name" in project["lastUpdatedBy"] else ""))
 
