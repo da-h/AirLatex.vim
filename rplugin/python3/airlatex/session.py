@@ -96,37 +96,52 @@ class AirLatexSession:
         """
         self.log.debug("login()")
         if not self.authenticated:
-            anim_status = create_task(self._makeStatusAnimation("Login"))
 
-            # get csrf token
-            loginpage_request = lambda: self.httpHandler.get(self.url + "/login")
-            loginpage = await self.nvim.loop.run_in_executor(None, loginpage_request)
-            if loginpage.ok:
-                csrf = re.search('value="([^"]*)"',re.search('<input\s[^>]*name="_csrf"[^>]*>', loginpage.text)[0])[1]
+            if not self.username.startswith("cookies:"):
 
-            # try to login
-            try:
-                data = {
-                    "email": self.username,
-                    "password": keyring.get_password("airlatex_"+self.domain, self.username)
-                }
-                if csrf is not None:
-                    data["_csrf"] = csrf
-                login = lambda: self.httpHandler.post(self.url + "/login", data=data)
-                login_response = await self.nvim.loop.run_in_executor(None, login)
-                anim_status.cancel()
-                if not login_response.ok:
-                    with tempfile.NamedTemporaryFile(delete=False) as f:
-                        f.write(login_response.text.encode())
-                        create_task(self.sidebar.updateStatus("Could not login using the credentials. You can check the response page under: %s" % f.name))
-                        return False
-            except Exception as e:
-                create_task(self.sidebar.updateStatus("Login failed: "+str(e)))
+                anim_status = create_task(self._makeStatusAnimation("Login"))
+
+                # get csrf token
+                loginpage_request = lambda: self.httpHandler.get(self.url + "/login")
+                loginpage = await self.nvim.loop.run_in_executor(None, loginpage_request)
+                if loginpage.ok:
+                    csrf_input = re.search('<input\s[^>]*name="_csrf"[^>]*>', loginpage.text)
+                    csrf = re.search('value="([^"]*)"',csrf_input[0])[1] if csrf_input else None
+
+                # try to login
+                try:
+                    data = {
+                        "email": self.username,
+                        "password": keyring.get_password("airlatex_"+self.domain, self.username)
+                    }
+                    if csrf is not None:
+                        data["_csrf"] = csrf
+                    login = lambda: self.httpHandler.post(self.url + "/login", data=data)
+                    login_response = await self.nvim.loop.run_in_executor(None, login)
+                    anim_status.cancel()
+                    if not login_response.ok:
+                        with tempfile.NamedTemporaryFile(delete=False) as f:
+                            f.write(login_response.text.encode())
+                            create_task(self.sidebar.updateStatus("Could not login using the credentials. You can check the response page under: %s" % f.name))
+                            return False
+                except Exception as e:
+                    anim_status.cancel()
+                    create_task(self.sidebar.updateStatus("Login failed: "+str(e)))
+                    return False
+
+            else:
+                # copy cookies to httpHandler
+                for c in self.username[8:].split(";"):
+                    if "=" not in c:
+                        raise ValueError("Cookie has no value. Found: %s" % c)
+                    name, value = c.split("=", 1)
+                    self.log.debug("Found Cookie for domain '%s' named '%s'" % (name, value))
+                    self.httpHandler.cookies[name] = value
 
             anim_status = create_task(self._makeStatusAnimation("Connecting"))
             # check if cookie found by testing if projects redirects to login page
             try:
-                get = lambda: self.httpHandler.get(self.url + "/project")
+                get = lambda: self.httpHandler.get(self.url + "/project", allow_redirects=False)
                 redirect = await self.nvim.loop.run_in_executor(None, get)
                 anim_status.cancel()
                 if redirect.ok:
@@ -141,6 +156,7 @@ class AirLatexSession:
                         create_task(self.sidebar.updateStatus("Connection failed: I could not retrieve the project list. You can check the response page under: %s" % f.name))
                     return False
             except Exception as e:
+                anim_status.cancel()
                 create_task(self.sidebar.updateStatus("Connection failed: "+str(e)))
         else:
             return False
@@ -153,7 +169,7 @@ class AirLatexSession:
         if self.authenticated:
             anim_status = create_task(self._makeStatusAnimation("Loading Projects"))
 
-            get = lambda: self.httpHandler.get(self.url + "/project")
+            get = lambda: self.httpHandler.get(self.url + "/project", allow_redirects=False)
             projectPage = (await self.nvim.loop.run_in_executor(None, get))
             anim_status.cancel()
 
@@ -166,17 +182,40 @@ class AirLatexSession:
                     create_task(self.sidebar.triggerRefresh())
                 return []
 
-            project_data_escaped = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text)[0])[1]
-            data = html.unescape(project_data_escaped)
-            self.log.debug("project_data="+data)
-            data = json.loads(data)
-            self.user_id = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-user_id"[^>]*>', projectPage.text)[0])[1]
-            create_task(self.sidebar.updateStatus("Online"))
-            self.log.debug(data)
+            try:
+                project_data_escaped = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text)[0])[1]
+                data = html.unescape(project_data_escaped)
+                self.log.debug("project_data="+data)
+                data = json.loads(data)
+                self.user_id = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-user_id"[^>]*>', projectPage.text)[0])[1]
+                create_task(self.sidebar.updateStatus("Online"))
+                self.log.debug(data)
 
-            self.projectList = data
-            self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
-            create_task(self.sidebar.triggerRefresh())
+                self.projectList = data
+                self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
+                create_task(self.sidebar.triggerRefresh())
+            except Exception as e:
+
+                # fallback to old overleaf version
+                try:
+                    pos_script_1  = projectPage.text.find("<script id=\"data\"")
+                    pos_script_2 = projectPage.text.find(">", pos_script_1 + 20)
+                    pos_script_close = projectPage.text.find("</script", pos_script_2 + 1)
+                    if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
+                        return []
+                    data = projectPage.text[pos_script_2+1:pos_script_close]
+                    data = json.loads(data)
+                    self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage.text)[1]
+                    create_task(self.sidebar.updateStatus("Online"))
+
+                    self.projectList = data["projects"]
+                    self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
+                    create_task(self.sidebar.triggerRefresh())
+
+                except Exception as e:
+                    with tempfile.NamedTemporaryFile(delete=False) as f:
+                        f.write(projectPage.text.encode())
+                        create_task(self.sidebar.updateStatus("Could not retrieve project list: %s. You can check the response page under: %s " % (str(e),f.name)))
 
     async def connectProject(self, project):
         """
