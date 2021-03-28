@@ -163,7 +163,10 @@ class AirLatexSession:
             if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.encode())
+                    self.authenticated = False
                     create_task(self.sidebar.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s. Cookies that has been used to authenticate are %s" % (self.url, f.name, ",".join([c.name for c in self.cj]))))
+                    self.nvim.async_call(self.sidebar.vimCursorSet, 6, 1)
+                    create_task(self.sidebar.triggerRefresh())
                 return []
             data = projectPage[pos_script_2+1:pos_script_close]
             data = json.loads(data)

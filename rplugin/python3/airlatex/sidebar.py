@@ -189,6 +189,7 @@ class SideBar:
         self.bufferappend("  ")
         self.bufferappend("  ")
         self.bufferappend("  ")
+        self.bufferappend(" Retry       : enter", ["retry"])
         self.bufferappend(" Status      : %s" % self.status, ["status"])
         self.statusline = self.buffer.range(self.buffer_write_i, self.buffer_write_i+1)
         self.updateStatusLine(releaseLock=False)
@@ -267,19 +268,24 @@ class SideBar:
 
     @pynvimCatchException
     def cursorAction(self, key="enter"):
-        self.log.debug_gui("cursorAction(%s)" % key)
-
         if not isinstance(self.cursorPos, list):
-            pass
+            return
+        self.log.debug_gui("cursorAction(%s) on %s" % (key, ",".join(str(p) for p in self.cursorPos)))
 
-        elif len(self.cursorPos) == 0:
+        if len(self.cursorPos) == 0:
             pass
 
         elif len(self.cursorPos) == 1:
+
             # disconnect all
             if self.cursorPos[0] == "disconnect":
                 if self.airlatex.session:
                     self.airlatex.session.cleanup()
+
+            # disconnect all
+            elif self.cursorPos[0] == "retry":
+                if self.airlatex.session:
+                    create_task(self.airlatex.session.login())
 
             # else is project
             elif not isinstance(self.cursorPos[0], str):
