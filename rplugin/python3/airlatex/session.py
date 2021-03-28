@@ -1,3 +1,4 @@
+import html
 import pynvim
 import keyring
 import requests
@@ -125,15 +126,10 @@ class AirLatexSession:
             anim_status = create_task(self._makeStatusAnimation("Connecting"))
             # check if cookie found by testing if projects redirects to login page
             try:
-                get = lambda: self.httpHandler.get(self.url + "/project", cookies=self.cj)
+                get = lambda: self.httpHandler.get(self.url + "/project")
                 redirect = await self.nvim.loop.run_in_executor(None, get)
                 anim_status.cancel()
                 if redirect.ok:
-
-                    # overwrite cookies in case there has been an update
-                    for name, value in self.httpHandler.cookies.get_dict().items():
-                        cookie = requests.cookies.create_cookie(name, value)
-                        self.cj.set_cookie(cookie)
 
                     self.authenticated = True
                     await self.updateProjectList()
@@ -157,27 +153,28 @@ class AirLatexSession:
         if self.authenticated:
             anim_status = create_task(self._makeStatusAnimation("Loading Projects"))
 
-            get = lambda: self.httpHandler.get(self.url + "/project", cookies=self.cj)
-            projectPage = (await self.nvim.loop.run_in_executor(None, get)).text
-            pos_script_1  = projectPage.find("<script id=\"data\"")
-            pos_script_2 = projectPage.find(">", pos_script_1 + 20)
-            pos_script_close = projectPage.find("</script", pos_script_2 + 1)
+            get = lambda: self.httpHandler.get(self.url + "/project")
+            projectPage = (await self.nvim.loop.run_in_executor(None, get))
             anim_status.cancel()
 
-            if pos_script_1 == -1 or pos_script_2 == -1 or pos_script_close == -1:
+            if not projectPage.ok:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
-                    f.write(projectPage.encode())
+                    f.write(projectPage.text.encode())
                     self.authenticated = False
-                    create_task(self.sidebar.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s. Cookies that has been used to authenticate are %s" % (self.url, f.name, ",".join([c.name for c in self.cj]))))
+                    create_task(self.sidebar.updateStatus("Offline. Please Login. I saved the webpage '%s' I got under %s." % (self.url, f.name)))
                     self.nvim.async_call(self.sidebar.vimCursorSet, 6, 1)
                     create_task(self.sidebar.triggerRefresh())
                 return []
-            data = projectPage[pos_script_2+1:pos_script_close]
-            data = json.loads(data)
-            self.user_id = re.search("user_id\s*:\s*'([^']+)'",projectPage)[1]
-            create_task(self.sidebar.updateStatus("Online"))
 
-            self.projectList = data["projects"]
+            project_data_escaped = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text)[0])[1]
+            data = html.unescape(project_data_escaped)
+            self.log.debug("project_data="+data)
+            data = json.loads(data)
+            self.user_id = re.search('content="([^"]*)"',re.search('<meta\s[^>]*name="ol-user_id"[^>]*>', projectPage.text)[0])[1]
+            create_task(self.sidebar.updateStatus("Online"))
+            self.log.debug(data)
+
+            self.projectList = data
             self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
             create_task(self.sidebar.triggerRefresh())
 
@@ -193,7 +190,8 @@ class AirLatexSession:
 
         # start connection
         anim_status.cancel()
-        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie="; ".join(c.name + "=" + c.value for c in self.cj), wait_for=self.wait_for)
+        cookie_str = "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=cookie_str, wait_for=self.wait_for)
         create_task(airlatexproject.start())
 
 

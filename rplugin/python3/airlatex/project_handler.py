@@ -224,7 +224,6 @@ class AirLatexProject:
 
     async def disconnect(self, msg="Disconnected."):
         # del self.project["handler"]
-        # self.msg_thread.do_run = False
         self.log.debug("Connection Closed. Reason:" + msg)
         self.project["msg"] = msg
         self.project["open"] = False
@@ -249,10 +248,9 @@ class AirLatexProject:
         try:
             while True:
                 msg = await self.ws.read_message()
-                # if msg is None:
-                #     await self.sidebarMsg("Connection Closed")
-                #     self.ws = None
-                #     break
+
+                if msg is None:
+                    break
                 self.log.debug("Raw server answer: "+msg)
 
                 # parse the code
