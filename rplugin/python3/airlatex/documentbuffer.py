@@ -36,9 +36,12 @@ class DocumentBuffer:
         DocumentBuffer.allBuffers[self.buffer] = self
 
         # Buffer Settings
+        buftype = 'nofile'
+        if self.nvim.eval("g:AirLatexBuftype") == 'NORMAL':
+            buftype = ''
         self.nvim.command("syntax on")
         self.nvim.command('setlocal noswapfile')
-        self.nvim.command('setlocal buftype=nofile')
+        self.nvim.command('setlocal buftype='+buftype)
         self.nvim.command("set filetype="+self.getExt())
 
         # ??? Returning normal function to these buttons
