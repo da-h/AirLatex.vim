@@ -110,15 +110,15 @@ class SideBar:
         self.nvim.command('setlocal filetype=airlatex')
 
         # Register Mappings
-        self.nvim.command("nmap <silent> <buffer> q :q <enter>")
-        self.nvim.command("nmap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-        self.nvim.command("nmap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-        self.nvim.command("nmap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-        self.nvim.command("nmap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-        self.nvim.command("nmap <silent> <enter> :call AirLatex_ProjectEnter() <enter>")
+        self.nvim.command("nnoremap <silent> <buffer> q :q <enter>")
+        self.nvim.command("nnoremap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
+        self.nvim.command("nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
+        self.nvim.command("nnoremap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
+        self.nvim.command("nnoremap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
+        self.nvim.command("nnoremap <silent> <enter> :call AirLatex_ProjectEnter() <enter>")
         self.nvim.command("autocmd VimLeavePre <buffer> :call AirLatex_Close()")
-        self.nvim.command("nmap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
-        self.nvim.command("nmap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
+        self.nvim.command("nnoremap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
+        self.nvim.command("nnoremap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
 
     @pynvimCatchException
     def listProjects(self, overwrite=False):
