@@ -185,8 +185,12 @@ class SideBar:
                         self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
                     if "lastUpdated" in project:
                         self.bufferappend("   last change: "+project['lastUpdated'])
-                    if "lastUpdatedBy" in project:
-                        self.bufferappend("    -> by: "+project['lastUpdatedBy']['first_name']+" "+(" "+project['lastUpdatedBy']['last_name'] if "last_name" in project["lastUpdatedBy"] else ""))
+                    if not (project["lastUpdatedBy"] == None):
+                        self.bufferappend("    -> by: " + 
+                                project['lastUpdatedBy']['first_name'] + 
+                                " " + 
+                                " " + 
+                                project['lastUpdatedBy']['last_name'])
 
         # Info
         self.bufferappend("  ")
