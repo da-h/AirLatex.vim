@@ -77,7 +77,7 @@ Variable | Possible Values | Description
 `g:AirLatexLogLevel` | `NOTSET` (default), `DEBUG_GUI`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Verbosity of logging.
 `g:AirLatexLogFile` | `AirLatex.log` (default)  | Log file name. (The file appears in the folder where vim has been started, but only if the log level is greater than `NOTSET`.)
 `g:AirLatexWebsocketTimeout` | `10` (default)  | Number of seconds to wait before declaring the connection as *stale*. This may happen if the server does not answer a request by AirLatex. Setting to `"none"` disables this feature. However, it can be the case that you will not notice when something is wrong with the connection.
-`g:AirLatexBuftype` | `NOFILE` (default), `NORMAL` | Choose the buffer type between `NORMAL`, which allows writing the buffer to a local file, or `NOFILE`, which does not associate the buffer to a file.
+`g:AirLatexBuftype` | `NOFILE` (default), `NORMAL` | Choose the buffer type between `NORMAL`, which allows writing the buffer to a local file, or `NOFILE`, which does not associate the buffer to a file. If `NORMAL` is chosen, the first time a buffer will be saved, AirLatex will check if the current directory is named after the Overleaf project: if so, it will save the buffer in the current directory, otherwise it will create the project folder, save the buffer within it, and move into the project directory.
 
 
 Troubleshooting

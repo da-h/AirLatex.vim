@@ -2,6 +2,7 @@ import traceback
 import keyring
 import pynvim
 import platform
+import os
 from sys import version_info
 from asyncio import create_task
 from airlatex.sidebar import SideBar
@@ -117,6 +118,22 @@ class AirLatex:
         buffer = self.nvim.current.buffer
         if buffer in DocumentBuffer.allBuffers:
             DocumentBuffer.allBuffers[buffer].writeBuffer()
+
+    @pynvim.function('AirLatex_WriteLocalBufferPre', sync=True)
+    def writeLocalBufferPre(self, args):
+        buffer = self.nvim.current.buffer
+        document = DocumentBuffer.allBuffers[buffer]
+        if not document.locally_saved:
+            document.locally_saved = True
+            path = "/".join([p["name"] for p in document.path])
+            project_name = path.split('/')[0]
+            cwd = self.nvim.command_output('pwd')
+            if cwd.split('/')[-1] != project_name:
+                project_dir = cwd + '/' + project_name
+                if not os.path.exists(project_dir):
+                    os.makedirs(project_dir)
+                self.nvim.chdir(project_dir)
+            self.nvim.command('file {}'.format(document.document['name']))
 
     def asyncCatchException(self, loop, context):
         message = context.get('message')
