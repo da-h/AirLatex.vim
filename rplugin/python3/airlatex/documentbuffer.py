@@ -19,6 +19,7 @@ class DocumentBuffer:
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
         self.saved_buffer = None
+        self.locally_saved = False
 
     def getName(self):
         return "/".join([p["name"] for p in self.path])
@@ -36,9 +37,13 @@ class DocumentBuffer:
         DocumentBuffer.allBuffers[self.buffer] = self
 
         # Buffer Settings
+        normal_buftype = self.nvim.eval("g:AirLatexBuftype") == 'NORMAL'
+        buftype = 'nofile'
+        if normal_buftype:
+            buftype = ''
         self.nvim.command("syntax on")
         self.nvim.command('setlocal noswapfile')
-        self.nvim.command('setlocal buftype=nofile')
+        self.nvim.command('setlocal buftype='+buftype)
         self.nvim.command("set filetype="+self.getExt())
 
         # ??? Returning normal function to these buttons
@@ -51,6 +56,8 @@ class DocumentBuffer:
         self.nvim.command("au CursorMoved <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
+        if normal_buftype:
+            self.nvim.command("au BufWritePre <buffer> call AirLatex_WriteLocalBufferPre()")
 
     def write(self, lines):
         self.log.debug("writing to buffer")
