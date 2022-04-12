@@ -25,7 +25,7 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 
 class AirLatexProject:
 
-    def __init__(self, url, project, used_id, sidebar, cookie=None, wait_for=15):
+    def __init__(self, url, project, used_id, sidebar, cookie=None, wait_for=15, validate_cert=True):
         project["handler"] = self
 
         self.sidebar = sidebar
@@ -34,6 +34,7 @@ class AirLatexProject:
         self.project = project
         self.url = url
         self.wait_for = wait_for if str(wait_for).isnumeric() else None
+        self.validate_cert = validate_cert
         self.cookie = cookie
         self.url_base = url.split("/")[2]
         self.command_counter = count(1)
@@ -236,7 +237,7 @@ class AirLatexProject:
             await self.sidebarMsg("Connecting Websocket.")
             self.project["connected"] = True
             self.log.debug("Initializing websocket connection to "+self.url)
-            request = HTTPRequest(self.url, headers={'Cookie': self.cookie})
+            request = HTTPRequest(self.url, headers={'Cookie': self.cookie}, validate_cert=self.validate_cert)
             self.ws = await websocket_connect(request)
         except Exception as e:
             await self.sidebarMsg("Connection Error: "+str(e))
