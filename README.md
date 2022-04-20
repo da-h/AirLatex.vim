@@ -77,7 +77,7 @@ Variable | Possible Values | Description
 `g:AirLatexLogLevel` | `NOTSET` (default), `DEBUG_GUI`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Verbosity of logging.
 `g:AirLatexLogFile` | `AirLatex.log` (default)  | Log file name. (The file appears in the folder where vim has been started, but only if the log level is greater than `NOTSET`.)
 `g:AirLatexWebsocketTimeout` | `10` (default)  | Number of seconds to wait before declaring the connection as *stale*. This may happen if the server does not answer a request by AirLatex. Setting to `"none"` disables this feature. However, it can be the case that you will not notice when something is wrong with the connection.
-`g:AirLatex_insecure` | `0` (default, off), `1` (on) | Allow insecure connection. For example, if the server is self hosted and/or the certificate is self-signed
+`g:AirLatexAllowInsecure` | `0` (default, off), `1` (on) | Allow insecure connection. For example, if the server is self hosted and/or the certificate is self-signed
 
 
 Troubleshooting

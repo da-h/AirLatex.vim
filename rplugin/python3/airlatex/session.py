@@ -35,7 +35,7 @@ class AirLatexSession:
         self.url = ("https://" if https else "http://") + domain
         self.authenticated = False
         self.httpHandler = requests.Session()
-        self.httpHandler.verify=False if self.nvim.eval("g:AirLatex_insecure") == 1 else True
+        self.httpHandler.verify=False if self.nvim.eval("g:AirLatexAllowInsecure") == 1 else True
         self.projectList = []
         self.log = getLogger("AirLatex")
 
