@@ -35,6 +35,7 @@ class AirLatexSession:
         self.url = ("https://" if https else "http://") + domain
         self.authenticated = False
         self.httpHandler = requests.Session()
+        self.httpHandler.verify=False if self.nvim.eval("g:AirLatexAllowInsecure") == 1 else True
         self.projectList = []
         self.log = getLogger("AirLatex")
 
@@ -214,7 +215,7 @@ class AirLatexSession:
         # start connection
         anim_status.cancel()
         cookie_str = "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
-        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=cookie_str, wait_for=self.wait_for)
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=cookie_str, wait_for=self.wait_for, validate_cert=self.httpHandler.verify)
         create_task(airlatexproject.start())
 
 
