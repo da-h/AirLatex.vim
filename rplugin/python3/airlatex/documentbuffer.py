@@ -20,10 +20,21 @@ class DocumentBuffer:
         self.buffer_mutex = RLock()
         self.saved_buffer = None
 
-    def getName(self):
-        return "/".join([p["name"] for p in self.path])
-    def getExt(self):
-        return self.document["name"].split(".")[-1]
+    @staticmethod
+    def getName(path):
+        return "/".join([p["name"] for p in path])
+
+    @staticmethod
+    def getExt(document):
+        return document["name"].split(".")[-1]
+
+    @property
+    def name(self):
+        return DocumentBuffer.getName(self.path)
+
+    @property
+    def ext(self):
+        return DocumentBuffer.getExt(self.document)
 
     def initDocumentBuffer(self):
         self.log.debug_gui("initDocumentBuffer")
@@ -31,7 +42,7 @@ class DocumentBuffer:
         # Creating new Buffer
         self.nvim.command('wincmd w')
         self.nvim.command('enew')
-        self.nvim.command('file '+ self.getName())
+        self.nvim.command('file '+ self.name)
         self.buffer = self.nvim.current.buffer
         DocumentBuffer.allBuffers[self.buffer] = self
 
@@ -39,7 +50,7 @@ class DocumentBuffer:
         self.nvim.command("syntax on")
         self.nvim.command('setlocal noswapfile')
         self.nvim.command('setlocal buftype=nofile')
-        self.nvim.command("set filetype="+self.getExt())
+        self.nvim.command("set filetype=" + self.ext)
 
         # ??? Returning normal function to these buttons
         # self.nvim.command("nmap <silent> <up> <up>")
