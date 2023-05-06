@@ -227,11 +227,21 @@ class AirLatexSession:
 
         anim_status = create_task(self._makeStatusAnimation("Connecting to Project"))
 
+        get = lambda: self.httpHandler.get(f"{self.url}/project/{project['id']}", allow_redirects=False)
+        projectPage = (await self.nvim.loop.run_in_executor(None, get))
+        csrf = re.search('content="([^"]*)"',
+                         re.search('<meta\s[^>]*name="ol-csrfToken"[^>]*>', projectPage.text)[0])[1]
+
         # start connection
         anim_status.cancel()
         cookie_str = "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
-        airlatexproject = AirLatexProject(await self._getWebSocketURL(), project, self.user_id, self.sidebar, cookie=cookie_str, wait_for=self.wait_for, validate_cert=self.httpHandler.verify)
+        # Side bar set command in document
+        airlatexproject = AirLatexProject(await self._getWebSocketURL(),
+                                          project, csrf, self.user_id,
+                                          self.sidebar, self.url,
+                                          self.httpHandler,
+                                          self.nvim,
+                                          cookie=cookie_str,
+                                          wait_for=self.wait_for,
+                                          validate_cert=self.httpHandler.verify)
         create_task(airlatexproject.start())
-
-
-

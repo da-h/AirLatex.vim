@@ -10,8 +10,6 @@ from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import logging_settings, init_logger, __version__
 
 
-
-
 @pynvim.plugin
 class AirLatex:
     def __init__(self, nvim):
@@ -66,9 +64,7 @@ class AirLatex:
                     self.nvim.command("let user_input = input(\"No Password found for '%s' and user '%s'.\nType it in to store it in keyring: \")" % (DOMAIN, username))
                     self.nvim.command("call inputrestore()")
                     keyring.set_password("airlatex_"+DOMAIN, username, self.nvim.eval("user_input"))
-
                     password = keyring.get_password("airlatex_"+DOMAIN, username)
-
             # connect
             try:
                 self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, self.nvim, https=https)
@@ -110,8 +106,14 @@ class AirLatex:
     # def projectEnter(self):
     #     plugin.updateProject()
 
+    @pynvim.function('AirLatex_Compile', sync=True)
+    def compile(self, args):
+        buffer = self.nvim.current.buffer
+        if buffer in DocumentBuffer.allBuffers:
+            DocumentBuffer.allBuffers[buffer].compile()
+
     @pynvim.function('AirLatexToggle', sync=True)
-    def air_latex_toggle(self, args):
+    def toggle(self, args):
         self.sidebar.toggle()
 
     @pynvim.function('AirLatex_Close', sync=True)

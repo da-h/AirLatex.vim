@@ -23,20 +23,61 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # answer_mult : m[5]
 # msg         : m[5]
 
+# Add a comment
+# {
+#   "name": "applyOtUpdate",
+#   "args": [
+#     "63b827fbb79e82556f365193",
+#     {
+#       "doc": "63b827fbb79e82556f365193",
+#       "op": [
+#         {
+#           "c": "%% \n%% Copyright 2007-2020 Elsevier Ltd\n%% ",
+#           "p": 0,
+#           "t": "6455d082cb375f31bd000001"
+#         }
+#       ],
+#       "v": 7401,
+#       "hash": "1305509d3513152d16c710401bb195d08076659b",
+#       "meta": {
+#         "tc": "6455cef3ec3f52201f"
+#       }
+#     }
+#   ]
+# }
+
+# For compile rootDoc_id is main file
+# {
+#   "rootDoc_id": "63b827fbb79e82556f365193",
+#   "draft": false,
+#   "check": "silent",
+#   "incrementalCompilesEnabled": true,
+#   "stopOnFirstError": false
+# }
+
 class AirLatexProject:
 
-    def __init__(self, url, project, used_id, sidebar, cookie=None, wait_for=15, validate_cert=True):
+    def __init__(self, url, project, csrf, used_id, sidebar, base_url,
+                 httpHandler,
+                 nvim,
+                 cookie=None,
+                 wait_for=15, validate_cert=True):
         project["handler"] = self
 
-        self.sidebar = sidebar
-        self.ioloop = IOLoop()
-        self.used_id = used_id
-        self.project = project
         self.url = url
+        self.project = project
+        self.csrf = csrf
+        self.used_id = used_id
+        self.sidebar = sidebar
+        self.base_url = base_url
+        self.httpHandler = httpHandler
+        self.nvim = nvim
+
+        self.cookie = cookie
         self.wait_for = wait_for if str(wait_for).isnumeric() else None
         self.validate_cert = validate_cert
-        self.cookie = cookie
-        self.url_base = url.split("/")[2]
+
+        self.ioloop = IOLoop()
         self.command_counter = count(1)
         self.ws = None
         self.requests = {}
@@ -92,12 +133,43 @@ class AirLatexProject:
             elif command == "updateRemoteCursor":
                 buf.updateRemoteCursor(data)
 
+    async def compile(self):
+        # TODO
+        # POST https://www.overleaf.com/project/61e630765fd4be0925750c79/compile?enable_pdf_caching=true
+        self.log.debug(f"Compiling. {str(self.project)}")
+        compile_url = f"{self.base_url}/project/{self.project['id']}/compile?enable_pdf_caching=true"
+        post = lambda: self.httpHandler.post(compile_url, headers={
+              'Cookie': self.cookie,
+              'x-csrf-token': self.csrf,
+              'content-type': 'application/json'
+            },
+            json={
+               "rootDoc_id": self.project["rootDoc_id"],
+               "draft": False,
+               "check": "silent",
+               "incrementalCompilesEnabled": True,
+               "stopOnFirstError": False
+            })
+        import requests
+        logger = self.log
+        response = (await self.nvim.loop.run_in_executor(None, post))
+
+        try:
+          data = response.json()
+          if data["status"] != "success":
+            raise Exception("Not success. Something failed.")
+          logger.debug("Compiled.")
+        except Exception as e:
+          logger.debug("\nResponse Content:")
+          logger.debug(f"{response.content}\n---\n{e}")
+
+
     async def updateRemoteCursor(self, cursors):
         for cursor in cursors:
             if "row" in cursor and "column" in cursor and "doc_id" in cursor:
                 await self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
 
-    async def updateCursor(self,doc, pos):
+    async def updateCursor(self, doc, pos):
         event = Event()
         await self.send("update",{
             "name":"clientTracking.updatePosition",
@@ -214,7 +286,7 @@ class AirLatexProject:
         # register document op-buffer
         self.documents[doc["_id"]]["ops_buffer"] = []
 
-        # regester for document-watching
+        # register for document-watching
         await self.send("cmd",{
             "name":"joinDoc",
             "args": [
@@ -373,7 +445,12 @@ class AirLatexProject:
 
                 # answer to our request
                 elif code == "7":
-                    await self.sidebarMsg("Error: Unauthorized. My guess is that your session cookies are outdated or not loaded. Typically reloading '%s/project' using the browser you used for login should reload the cookies." % self.url_base)
+                    await self.sidebarMsg("Error: Unauthorized. My guess is that"
+                                          " your session cookies are outdated or"
+                                          " not loaded. Typically reloading"
+                                          " '%s/project' using the browser you"
+                                          " used for login should reload the"
+                                          " cookies." % self.base_url)
 
                 # unknown message
                 else:

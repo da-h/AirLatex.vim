@@ -48,6 +48,7 @@ class DocumentBuffer:
         # self.nvim.command("set updatetime=500")
         # self.nvim.command("autocmd CursorMoved,CursorMovedI * :call AirLatex_update_pos()")
         # self.nvim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
+        self.nvim.command("cmap <buffer> w call AirLatex_Compile()<CR>")
         self.nvim.command("au CursorMoved <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
@@ -61,6 +62,9 @@ class DocumentBuffer:
                 buffer.append(l)
             self.saved_buffer = buffer[:]
         self.nvim.async_call(writeLines,self.buffer,lines)
+
+    def compile(self):
+        create_task(self.project_handler.compile())
 
     def updateRemoteCursor(self, cursor):
         self.log.debug("updateRemoteCursor")

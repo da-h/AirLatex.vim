@@ -117,7 +117,7 @@ class SideBar:
         self.nvim.command("nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
         self.nvim.command("nnoremap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
         self.nvim.command("nnoremap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-        self.nvim.command("nnoremap <silent> <enter> :call AirLatex_ProjectEnter() <enter>")
+        self.nvim.command("nnoremap <silent> <buffer> <enter> :call AirLatex_ProjectEnter() <enter>")
         self.nvim.command("autocmd VimLeavePre <buffer> :call AirLatex_Close()")
         self.nvim.command("nnoremap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
         self.nvim.command("nnoremap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
@@ -267,6 +267,13 @@ class SideBar:
               self.nvim.command('buffer ' + current_buffer.name)
 
     @pynvimCatchException
+    def compile(self):
+        if self.visible:
+            self.hide()
+        else:
+            self.show()
+
+    @pynvimCatchException
     def toggle(self):
         if self.visible:
             self.hide()
@@ -350,11 +357,3 @@ class SideBar:
         elif self.cursorPos[-1]["type"] == "file":
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
             create_task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))
-
-
-
-
-
-
-
-
