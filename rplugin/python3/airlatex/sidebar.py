@@ -357,10 +357,9 @@ class SideBar:
         elif self.cursorPos[-1]["type"] == "file":
             name = DocumentBuffer.getName(self.cursorPos)
             for buffer, document in DocumentBuffer.allBuffers.items():
-                self.log.debug_gui("{name} vs {document.name}")
+                self.log.debug(f"{name} vs {document.name}")
                 if name == document.name:
                     self.nvim.command('wincmd w')
-                    self.nvim.command('enew')
                     self.nvim.command(f'buffer {buffer.number}')
                     return
             documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
