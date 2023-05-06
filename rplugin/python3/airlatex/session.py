@@ -174,7 +174,7 @@ class AirLatexSession:
             projectPage = (await self.nvim.loop.run_in_executor(None, get))
             anim_status.cancel()
 
-            meta = re.search('<meta\s[^>]*name="ol-projects"[^>]*>', projectPage.text) if projectPage.ok else None
+            meta = re.search('<meta\s[^>]*name="ol-prefetchedProjectsBlob"[^>]*>', projectPage.text) if projectPage.ok else None
             if not projectPage.ok or meta is None:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.text.encode())
@@ -193,7 +193,21 @@ class AirLatexSession:
                 create_task(self.sidebar.updateStatus("Online"))
                 self.log.debug(data)
 
-                self.projectList = data
+                self.projectList = data["projects"]
+
+                for project in self.projectList:
+                    owner = project["owner"]
+                    if "firstName" in owner:
+                        owner["first_name"] = owner.pop("firstName")
+                    if "lastName" in owner:
+                        owner["last_name"] = owner.pop("lastName")
+
+                    last_updated_by = project["lastUpdatedBy"]
+                    if "firstName" in last_updated_by:
+                        last_updated_by["first_name"] = last_updated_by.pop("firstName")
+                    if "lastName" in last_updated_by:
+                        last_updated_by["last_name"] = last_updated_by.pop("lastName")
+
                 self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
                 create_task(self.sidebar.triggerRefresh())
             except Exception as e:
@@ -201,6 +215,7 @@ class AirLatexSession:
                 with tempfile.NamedTemporaryFile(delete=False) as f:
                     f.write(projectPage.text.encode())
                     create_task(self.sidebar.updateStatus("Could not retrieve project list: %s. You can check the response page under: %s " % (str(e),f.name)))
+                create_task(self.sidebar.triggerRefresh())
 
     async def connectProject(self, project):
         """

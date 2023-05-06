@@ -31,7 +31,7 @@ class DocumentBuffer:
         # Creating new Buffer
         self.nvim.command('wincmd w')
         self.nvim.command('enew')
-        self.nvim.command('file '+self.getName())
+        self.nvim.command('file '+ self.getName())
         self.buffer = self.nvim.current.buffer
         DocumentBuffer.allBuffers[self.buffer] = self
 

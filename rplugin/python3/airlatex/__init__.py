@@ -20,6 +20,10 @@ class AirLatex:
         self.servername = self.nvim.eval("v:servername")
         self.sidebar = False
         self.session = False
+        self.nvim.command("let g:AirLatexIsActive = 1")
+
+    def __del__(self):
+        self.nvim.command("let g:AirLatexIsActive = 0")
 
     @pynvim.command('AirLatex', nargs=0, sync=True)
     def openSidebar(self):
@@ -106,6 +110,10 @@ class AirLatex:
     # def projectEnter(self):
     #     plugin.updateProject()
 
+    @pynvim.function('AirLatexToggle', sync=True)
+    def air_latex_toggle(self, args):
+        self.sidebar.toggle()
+
     @pynvim.function('AirLatex_Close', sync=True)
     def sidebarClose(self, args):
         if self.sidebar:
@@ -132,5 +140,3 @@ class AirLatex:
         self.log.error(message, exc_info=exc_info)
         self.log.info("Shutting down...")
         loop.create_task(self.session.cleanup("Error: '%s'." % message))
-
-

@@ -44,6 +44,10 @@ if !exists("g:AirLatexUseHTTPS")
     let g:AirLatexUseHTTPS=1
 endif
 
+if !exists("g:AirLatexAllowInsecure")
+    let g:AirLatexAllowInsecure=xor(g:AirLatexUseHTTPS, 1)
+endif
+
 if !exists("g:AirLatexShowArchived")
     let g:AirLatexShowArchived=0
 endif

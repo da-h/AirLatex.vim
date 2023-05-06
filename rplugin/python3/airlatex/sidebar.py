@@ -26,8 +26,6 @@ class SideBar:
         self.status = "Initializing"
         self.uilock = Lock()
 
-
-
     # ----------- #
     # AsyncIO API #
     # ----------- #
@@ -45,11 +43,14 @@ class SideBar:
         self.log.debug_gui("updateStatus()")
         self.nvim.async_call(self.updateStatusLine)
 
-
-
     # ----------- #
     # GUI Drawing #
     # ----------- #
+
+    @property
+    def visible(self):
+        buffer_id = self.buffer.number
+        return self.nvim.call('bufwinnr', buffer_id) != -1
 
     @pynvimCatchException
     def updateStatusLine(self, releaseLock=True):
@@ -108,6 +109,7 @@ class SideBar:
         self.nvim.command('iabc <buffer>')
         self.nvim.command('setlocal cursorline')
         self.nvim.command('setlocal filetype=airlatex')
+        # self.nvim.command('setlocal nomodifiable')
 
         # Register Mappings
         self.nvim.command("nnoremap <silent> <buffer> q :q <enter>")
@@ -186,10 +188,10 @@ class SideBar:
                     if "lastUpdated" in project:
                         self.bufferappend("   last change: "+project['lastUpdated'])
                     if not (project["lastUpdatedBy"] == None):
-                        self.bufferappend("    -> by: " + 
-                                project['lastUpdatedBy']['first_name'] + 
-                                " " + 
-                                " " + 
+                        self.bufferappend("    -> by: " +
+                                project['lastUpdatedBy']['first_name'] +
+                                " " +
+                                " " +
                                 project['lastUpdatedBy']['last_name'])
 
         # Info
@@ -237,10 +239,39 @@ class SideBar:
                 file["type"] = "fileRef"
                 self.bufferappend("    - "+file["name"], pos+[file])
 
-
     # ------- #
     # Actions #
     # ------- #
+
+    def show(self):
+        if not self.visible:
+            self.nvim.command('let splitType = g:AirLatexWinPos ==# "left" ? "vertical " : ""')
+            self.nvim.command('let splitSize = g:AirLatexWinSize')
+            self.nvim.command(f"""
+                exec splitType . 'sb{self.buffer.number}'
+                exec 'buffer {self.buffer.number}'
+                exec splitType . 'resize ' . splitSize
+            """)
+            create_task(self.triggerRefresh())
+
+    def hide(self):
+        if self.visible:
+          current_buffer = self.nvim.current.buffer
+          sidebar_buffer = self.airlatex.sidebar.buffer
+          if current_buffer == sidebar_buffer:
+              self.nvim.command('hide')
+          else:
+              self.nvim.command('buffer AirLatex')
+              self.nvim.command('hide')
+              # Return to the original buffer
+              self.nvim.command('buffer ' + current_buffer.name)
+
+    @pynvimCatchException
+    def toggle(self):
+        if self.visible:
+            self.hide()
+        else:
+            self.show()
 
     @pynvimCatchException
     def _toggle(self, dict, key, default=True):
