@@ -91,7 +91,7 @@ class DocumentBuffer:
 
     def highlightComment(self, comments, thread):
       thread_id = thread["id"]
-      comments = comments.get(thread_id, {}) 
+      comments = comments.get(thread_id, {})
       resolved = comments.get("resolved", False)
       if resolved or not comments:
         return
@@ -144,19 +144,23 @@ class DocumentBuffer:
       self.nvim.async_call(highlight_callback)
 
     def updateRemoteCursor(self, cursor):
-        self.log.debug("updateRemoteCursor {cursor}")
+        self.log.debug(f"updateRemoteCursor {cursor}")
 
-    def showComments(self):
+    def showComments(self, comment_buffer):
         cursor = self.nvim.current.window.cursor
         self.log.debug(f"cursor {cursor}")
         cursor_offset = sum([len(line) + 1 for line in self.buffer[:cursor[0] -
                                                            1]]) + cursor[1]
         threads = self.thread_intervals[cursor_offset]
         if not threads:
+          # comment_buffer.hide()
+          comment_buffer.buffer[:] = []
           return
         self.log.debug(f"found threads {threads}")
-        messages = self.project_handler.comments[threads.pop().data]["messages"]
-        self.log.debug(f"messages {messages}")
+        comment_buffer.render(self.project_handler, threads)
+        # comment_buffer.render(self.project_handler, threads)
+        # messages = self.project_handler.comments[threads.pop().data]["messages"]
+        # self.log.debug(f"messages {messages}")
 
     def writeBuffer(self):
         self.log.debug("writeBuffer: calculating changes to send")

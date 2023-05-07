@@ -6,6 +6,7 @@ from sys import version_info
 from asyncio import create_task
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
+from airlatex.commentbuffer import CommentBuffer
 from airlatex.documentbuffer import DocumentBuffer
 from airlatex.util import logging_settings, init_logger, __version__
 
@@ -17,6 +18,7 @@ class AirLatex:
         self.nvim = nvim
         self.servername = self.nvim.eval("v:servername")
         self.sidebar = False
+        self.comments = False
         self.session = False
         self.nvim.command("let g:AirLatexIsActive = 1")
 
@@ -43,6 +45,14 @@ class AirLatex:
         if not self.sidebar:
             self.sidebar = SideBar(self.nvim, self)
         self.sidebar.initGUI()
+        self.sidebar.hide()
+
+        # initialize comment buffer
+        if not self.comments:
+            self.comments = CommentBuffer(self.nvim, self)
+        self.comments.initGUI()
+
+        self.sidebar.show()
 
         # ensure session to exist
         if not self.session:
@@ -116,6 +126,10 @@ class AirLatex:
     def toggle(self, args):
         self.sidebar.toggle()
 
+    @pynvim.function('AirLatexToggleComments', sync=True)
+    def toggleComments(self, args):
+        self.comments.toggle()
+
     @pynvim.function('AirLatexToggleTracking', sync=True)
     def toggleTracking(self, args):
         # Should be set, but just in case
@@ -138,7 +152,15 @@ class AirLatex:
     def showComments(self, args):
         buffer = self.nvim.current.buffer
         if buffer in DocumentBuffer.allBuffers:
-            DocumentBuffer.allBuffers[buffer].showComments()
+            DocumentBuffer.allBuffers[buffer].showComments(self.comments)
+
+    @pynvim.function('AirLatex_NextComment')
+    def nextComment(self, args):
+        self.comments.changeComment(1)
+
+    @pynvim.function('AirLatex_PrevComment')
+    def prevComment(self, args):
+        self.comments.changeComment(-1)
 
     def asyncCatchException(self, loop, context):
         message = context.get('message')
