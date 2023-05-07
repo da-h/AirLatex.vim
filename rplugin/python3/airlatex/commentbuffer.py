@@ -196,12 +196,11 @@ class CommentBuffer:
     def show(self):
         if not self.visible:
             current_buffer = self.nvim.current.buffer
-            self.nvim.command('let splitType = g:AirLatexWinPos ==# "vertical " ? "left " : ""')
             self.nvim.command('let splitSize = g:AirLatexWinSize')
             self.nvim.command(f"""
-                exec splitType . 'sb{self.buffer.number}'
+                exec 'vertical rightbelow sb{self.buffer.number}'
                 exec 'buffer {self.buffer.number}'
-                exec splitType . 'resize ' . splitSize
+                exec 'vertical rightbelow resize ' . splitSize
             """)
             create_task(self.triggerRefresh())
 
