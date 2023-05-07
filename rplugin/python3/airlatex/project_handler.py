@@ -15,6 +15,8 @@ from logging import getLogger
 from asyncio import sleep
 import requests
 
+from intervaltree import Interval, IntervalTree
+
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
 # code        : m[0]
@@ -392,8 +394,14 @@ class AirLatexProject:
                     # Bit of a hack, but trying to keep state consistent might
                     # be very annoying
                     elif data["name"] in ("resolve-thread", "new-comment",
-                                 "edit-message", "delete-message"):
+                                 "edit-message", "delete-message", "reopen-thread"):
                         self.comments = await self.getComments()
+                        if data["name"] in ("resolve-thread", "reopen-thread"):
+                            thread_id = data["args"][0]
+                            for doc in self.documents.values():
+                              if thread_id in doc.threads:
+                                doc.threads[thread_id]["resolved"] = (
+                                    "resolve-thread" == data["name"])
 
                     # unknown message
                     else:

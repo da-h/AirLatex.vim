@@ -128,6 +128,12 @@ class AirLatex:
         if buffer in DocumentBuffer.allBuffers:
             DocumentBuffer.allBuffers[buffer].writeBuffer()
 
+    @pynvim.function('AirLatex_ShowComments')
+    def showComments(self, args):
+        buffer = self.nvim.current.buffer
+        if buffer in DocumentBuffer.allBuffers:
+            DocumentBuffer.allBuffers[buffer].showComments()
+
     def asyncCatchException(self, loop, context):
         message = context.get('message')
         if not message:

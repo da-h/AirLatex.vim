@@ -6,6 +6,8 @@ import asyncio
 from asyncio import create_task, Lock
 from logging import getLogger
 
+from intervaltree import Interval, IntervalTree
+
 if "allBuffers" not in globals():
     allBuffers = {}
 class DocumentBuffer:
@@ -23,6 +25,7 @@ class DocumentBuffer:
         self.threads = []
         self.highlight = self.nvim.api.create_namespace('CommentGroup')
         self.buffer_event = asyncio.Event()
+        self.thread_intervals = IntervalTree()
 
     @staticmethod
     def getName(path):
@@ -68,6 +71,9 @@ class DocumentBuffer:
         self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
+        self.nvim.command("au CursorMoved <buffer> call AirLatex_ShowComments()")
+        self.nvim.command("command! -buffer -nargs=0 W call AirLatex_ShowComments()")
+
         # Comment formatting
         self.nvim.command(f"hi CommentGroup cterm=bold gui=bold")
 
@@ -84,17 +90,14 @@ class DocumentBuffer:
         create_task(self.project_handler.compile())
 
     def highlightComment(self, comments, thread):
-      resolved = comments[thread["id"]].get("resolved", False)
-      messages = comments[thread["id"]]["messages"]
-      self.log.debug(f">>>>> highlight {messages} {thread}")
+      thread_id = thread["id"]
+      resolved = comments[thread_id].get("resolved", False)
+      messages = comments[thread_id]["messages"]
       if resolved:
         return
 
       start = thread["op"]["p"]
       end = start + len(thread["op"]["c"])
-
-      self.log.debug(f">>>>> highlight {start} {end}")
-      self.log.debug(f">>>>> buffer len {len(self.buffer[:])}")
 
       char_count, start_line, start_col, end_line, end_col = 0, 0, 0, 0, 0
       for i, line in enumerate(self.buffer[:]):
@@ -115,12 +118,14 @@ class DocumentBuffer:
               self.buffer.api.add_highlight(self.highlight, 'Error', line_num, 0, -1)
           self.buffer.api.add_highlight(self.highlight, 'Error', end_line, 0, end_col)
       self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
+      self.thread_intervals[start:end] = thread_id
 
     async def highlightComments(self, comments, threads=None):
       # Clear any existing highlights
       self.log.debug(f"highlight {self.highlight}")
       def highlight_callback():
         self.buffer.api.clear_namespace(self.highlight, 0, -1)
+        self.thread_intervals.clear()
         if threads:
           self.threads = {thread["id"]: thread for thread in threads}
         for thread in self.threads.values():
@@ -131,10 +136,19 @@ class DocumentBuffer:
       self.nvim.async_call(highlight_callback)
 
     def updateRemoteCursor(self, cursor):
-        self.log.debug("updateRemoteCursor")
-        # def updateRemoteCursor(cursor, nvim):
-        #     nvim.command("match ErrorMsg #\%"+str(cursor["row"])+"\%"+str(cursor["column"])+"v#")
-        # self.nvim.async_call(updateRemoteCursor, cursor, self.nvim)
+        self.log.debug("updateRemoteCursor {cursor}")
+
+    def showComments(self):
+        cursor = self.nvim.current.window.cursor
+        self.log.debug(f"cursor {cursor}")
+        cursor_offset = sum([len(line) + 1 for line in self.buffer[:cursor[0] -
+                                                           1]]) + cursor[1]
+        threads = self.thread_intervals[cursor_offset]
+        if not threads:
+          return
+        self.log.debug(f"found threads {threads}")
+        messages = self.project_handler.comments[threads.pop().data]["messages"]
+        self.log.debug(f"messages {messages}")
 
     def writeBuffer(self):
         self.log.debug("writeBuffer: calculating changes to send")
