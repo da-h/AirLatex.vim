@@ -116,6 +116,12 @@ class AirLatex:
     def toggle(self, args):
         self.sidebar.toggle()
 
+    @pynvim.function('AirLatexToggleTracking', sync=True)
+    def toggleTracking(self, args):
+        # Should be set, but just in case
+        tracking = self.nvim.eval("g:AirLatexTrackChanges")
+        self.nvim.command(f"let g:AirLatexTrackChanges={1 - tracking}")
+
     @pynvim.function('AirLatex_Close', sync=True)
     def sidebarClose(self, args):
         if self.sidebar:

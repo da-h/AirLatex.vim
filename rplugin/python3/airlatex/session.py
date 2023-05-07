@@ -75,7 +75,6 @@ class AirLatexSession:
             self.log.debug("Websocket wsChannel '%s'"%wsChannel)
             return ("wss://" if self.https else "ws://") + self.domain + "/socket.io/1/websocket/"+wsChannel
 
-
     # --- #
     # api # (to be used by pynvim.plugin)
     # --- #

@@ -5,7 +5,7 @@ from tornado.websocket import websocket_connect
 import re
 from itertools import count
 import json
-from airlatex.util import _genTimeStamp
+from airlatex.util import _genTimeStamp, generateId
 import time
 from tornado.locks import Lock, Event
 from logging import DEBUG
@@ -184,11 +184,11 @@ class AirLatexProject:
         }, event=event)
 
     # wrapper for the ioloop
-    async def sendOps(self, document, content_hash, ops=[]):
-        await self.ops_queue.put((document, content_hash, ops))
+    async def sendOps(self, document, content_hash, ops=[], track=False):
+        await self.ops_queue.put((document, content_hash, ops, track))
 
     # actual sending of ops
-    async def _sendOps(self, document, content_hash, ops=[]):
+    async def _sendOps(self, document, content_hash, ops=[], track=False):
 
         # append new ops to buffer
         document["ops_buffer"] += ops
@@ -219,6 +219,9 @@ class AirLatexProject:
             "lastV": document["version"]-1,
             "hash": content_hash # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
         }
+
+        if track:
+          obj_to_send['meta'] = {'tc': generateId()}
 
         # notify server of local change
         self.log.debug("Sending %i changes to document %s (ver %i)." % (len(ops_buffer), document["_id"], document["version"]))
@@ -254,7 +257,7 @@ class AirLatexProject:
             all_ops = {}
 
             # await first element
-            document, content_hash, ops = await self.ops_queue.get()
+            document, content_hash, ops, track = await self.ops_queue.get()
             if document["_id"] not in all_ops:
                 all_ops[document["_id"]] = ops
             else:
@@ -263,7 +266,7 @@ class AirLatexProject:
             # get also all other elements that are currently in queue
             num = self.ops_queue.qsize()
             for i in range(num):
-                document, content_hash, ops = await self.ops_queue.get()
+                document, content_hash, ops, track = await self.ops_queue.get()
                 if document["_id"] not in all_ops:
                     all_ops[document["_id"]] = ops
                 else:
@@ -272,7 +275,7 @@ class AirLatexProject:
             # apply all ops one after another
             for doc_id, ops in all_ops.items():
                 document = self.documents[doc_id]
-                await self._sendOps(document, content_hash, ops)
+                await self._sendOps(document, content_hash, ops, track)
 
 
     async def joinDocument(self, buffer):

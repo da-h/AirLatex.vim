@@ -2,6 +2,7 @@ import time
 import logging
 import traceback
 from logging import NOTSET
+import random
 
 
 __version__ = "0.2"
@@ -61,6 +62,20 @@ def init_logger():
 
     return log
 
+
+def generateId():
+    pid = format(random.randint(0, 32767), 'x')
+    machine = format(random.randint(0, 16777216), 'x')
+    timestamp = format(int(time.time()), 'x')
+
+    return (
+        '00000000'[: 8 - len(timestamp)] +
+        timestamp +
+        '000000'[: 6 - len(machine)] +
+        machine +
+        '0000'[: 4 - len(pid)] +
+        pid
+    )
 
 
 def pynvimCatchException(fn, alt=None):

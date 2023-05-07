@@ -254,7 +254,10 @@ class DocumentBuffer:
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
         self.log.debug(" -> sending ops")
-        create_task(self.project_handler.sendOps(self.document, content_hash, ops))
+
+        track = self.nvim.eval("g:AirLatexTrackChanges") == 1
+        create_task(self.project_handler.sendOps(self.document, content_hash,
+                                                 ops, track))
 
     def applyUpdate(self, packet, comments):
         self.log.debug("apply server updates to buffer")

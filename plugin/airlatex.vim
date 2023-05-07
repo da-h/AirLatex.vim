@@ -56,6 +56,8 @@ if !exists("g:AirLatexWebsocketTimeout")
     let g:AirLatexWebsocketTimeout=10
 endif
 
-
+if !exists("g:AirLatexTrackChanges")
+    let g:AirLatexTrackChanges=0
+endif
 
 " vim: set sw=4 sts=4 et fdm=marker:
