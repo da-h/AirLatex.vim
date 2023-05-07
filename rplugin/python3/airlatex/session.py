@@ -237,10 +237,7 @@ class AirLatexSession:
         cookie_str = "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
         # Side bar set command in document
         airlatexproject = AirLatexProject(await self._getWebSocketURL(),
-                                          project, csrf, self.user_id,
-                                          self.sidebar, self.url,
-                                          self.httpHandler,
-                                          self.nvim,
+                                          project, csrf, self,
                                           cookie=cookie_str,
                                           wait_for=self.wait_for,
                                           validate_cert=self.httpHandler.verify)

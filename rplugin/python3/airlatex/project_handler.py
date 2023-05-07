@@ -13,6 +13,7 @@ from tornado.httpclient import HTTPRequest
 from asyncio import Queue, wait_for, TimeoutError
 from logging import getLogger
 from asyncio import sleep
+import requests
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -24,42 +25,31 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # msg         : m[5]
 
 # Add a comment
-# {
-#   "name": "applyOtUpdate",
-#   "args": [
-#     "63b827fbb79e82556f365193",
-#     {
-#       "doc": "63b827fbb79e82556f365193",
-#       "op": [
-#         {
-#           "c": "%% \n%% Copyright 2007-2020 Elsevier Ltd\n%% ",
-#           "p": 0,
-#           "t": "6455d082cb375f31bd000001"
-#         }
-#       ],
-#       "v": 7401,
-#       "hash": "1305509d3513152d16c710401bb195d08076659b",
-#       "meta": {
-#         "tc": "6455cef3ec3f52201f"
-#       }
-#     }
-#   ]
-# }
+# https://github.com/overleaf/overleaf/blob/959e6a73d8b0db78c4d4f7c844c935cf9157e5bc/libraries/ranges-tracker/index.cjs#L80
+# Generate an ID based on position, and then post that ID to
+# /project/>project id>/thread/<gen id>/messages
+# With format below
 
-# For compile rootDoc_id is main file
-# {
-#   "rootDoc_id": "63b827fbb79e82556f365193",
-#   "draft": false,
-#   "check": "silent",
-#   "incrementalCompilesEnabled": true,
-#   "stopOnFirstError": false
-# }
+# Add to thread
+# Just post to /project/<project id>/thread/<thread id>/messages
+# With below format
+
+# Delete message
+# Delete type
+# https://www.overleaf.com/project/<proj>/thread/<thread>/messages/<comment id>
+
+# Post resolve
+# https://www.overleaf.com/project/<proj>/thread/<thread id>/resolve
+# post with just _csrf
+
+# Comment format
+# {content: "comment", _csrf: "<csrf>"}
+
 
 class AirLatexProject:
 
-    def __init__(self, url, project, csrf, used_id, sidebar, base_url,
-                 httpHandler,
-                 nvim,
+    def __init__(self, url, project, csrf,
+                 session,
                  cookie=None,
                  wait_for=15, validate_cert=True):
         project["handler"] = self
@@ -67,11 +57,9 @@ class AirLatexProject:
         self.url = url
         self.project = project
         self.csrf = csrf
-        self.used_id = used_id
-        self.sidebar = sidebar
-        self.base_url = base_url
-        self.httpHandler = httpHandler
-        self.nvim = nvim
+
+        self.sidebar = session.sidebar
+        self.session = session
 
         self.cookie = cookie
         self.wait_for = wait_for if str(wait_for).isnumeric() else None
@@ -125,20 +113,20 @@ class AirLatexProject:
         if doc_id in self.documents:
             doc = self.documents[doc_id]
             buf = doc["buffer"]
-            self.log.debug_gui("bufferDo cmd="+command)
+            self.log.debug_gui("bufferDo cmd=" + command)
             if command == "applyUpdate":
-                buf.applyUpdate(data)
+                buf.applyUpdate(data, self.comments)
             elif command == "write":
                 buf.write(data)
             elif command == "updateRemoteCursor":
                 buf.updateRemoteCursor(data)
+            elif command == "highlightComments":
+                await buf.highlightComments(self.comments, data)
 
     async def compile(self):
-        # TODO
-        # POST https://www.overleaf.com/project/61e630765fd4be0925750c79/compile?enable_pdf_caching=true
         self.log.debug(f"Compiling. {str(self.project)}")
-        compile_url = f"{self.base_url}/project/{self.project['id']}/compile?enable_pdf_caching=true"
-        post = lambda: self.httpHandler.post(compile_url, headers={
+        compile_url = f"{self.session.url}/project/{self.project['id']}/compile?enable_pdf_caching=true"
+        post = lambda: self.session.httpHandler.post(compile_url, headers={
               'Cookie': self.cookie,
               'x-csrf-token': self.csrf,
               'content-type': 'application/json'
@@ -150,19 +138,32 @@ class AirLatexProject:
                "incrementalCompilesEnabled": True,
                "stopOnFirstError": False
             })
-        import requests
         logger = self.log
-        response = (await self.nvim.loop.run_in_executor(None, post))
+        response = (await self.session.nvim.loop.run_in_executor(None, post))
 
         try:
           data = response.json()
           if data["status"] != "success":
-            raise Exception("Not success. Something failed.")
+            raise Exception("No success in compiling. Something failed.")
           logger.debug("Compiled.")
         except Exception as e:
-          logger.debug("\nResponse Content:")
+          logger.debug("\nCompilation response content:")
           logger.debug(f"{response.content}\n---\n{e}")
 
+    async def getComments(self):
+        compile_url = f"{self.session.url}/project/{self.project['id']}/threads"
+        get = lambda: self.session.httpHandler.get(compile_url, headers={
+              'Cookie': self.cookie,
+            })
+        logger = self.log
+        response = (await self.session.nvim.loop.run_in_executor(None, get))
+        try:
+          comments = response.json()
+          logger.debug("Got comments")
+          return comments
+        except Exception as e:
+          logger.debug("\nComments response content:")
+          logger.debug(f"{response.content}\n---\n{e}")
 
     async def updateRemoteCursor(self, cursors):
         for cursor in cursors:
@@ -236,7 +237,7 @@ class AirLatexProject:
             except TimeoutError:
                 await self.disconnect("Error: The server did not answer for %d seconds." % self.wait_for)
         await self.gui_await(False)
-        self.log.debug(" -> Waiting for server to accept changes  changes to documet %s (ver %i)-> done" % (document["_id"], document["version"]))
+        self.log.debug(" -> Waiting for server to accept changes to document %s (ver %i)-> done" % (document["_id"], document["version"]))
 
     # sendOps whenever events appear in queue
     # (is only called in constructor)
@@ -270,8 +271,6 @@ class AirLatexProject:
             for doc_id, ops in all_ops.items():
                 document = self.documents[doc_id]
                 await self._sendOps(document, content_hash, ops)
-
-
 
 
     async def joinDocument(self, buffer):
@@ -319,6 +318,7 @@ class AirLatexProject:
 
     async def run(self):
         try:
+            self.comments = await self.getComments()
             while True:
                 msg = await self.ws.read_message()
 
@@ -389,6 +389,12 @@ class AirLatexProject:
                     elif data["name"] == "otUpdateError":
                         await self.disconnect("Error occured on operation Update: " + data["args"][0])
 
+                    # Bit of a hack, but trying to keep state consistent might
+                    # be very annoying
+                    elif data["name"] in ("resolve-thread", "new-comment",
+                                 "edit-message", "delete-message"):
+                        self.comments = await self.getComments()
+
                     # unknown message
                     else:
                         await self.sidebarMsg("Data not known: "+msg)
@@ -412,8 +418,11 @@ class AirLatexProject:
 
                     elif cmd == "joinDoc":
                         id = request["args"][0]
-                        self.documents[id]["version"] = data[2]
                         await self.bufferDo(id, "write", [d.encode("latin1").decode("utf8") for d in data[1]])
+                        self.documents[id]["version"] = data[2]
+                        # Unknown #3
+                        await self.bufferDo(id, "highlightComments", data[4].get("comments", []))
+                        # self.change_meta = data[4].get("changes", [])
 
                     elif cmd == "applyOtUpdate":
                         id = request["args"][0]
@@ -439,9 +448,8 @@ class AirLatexProject:
                     elif cmd == "clientTracking.updatePosition":
                         # server accepted the change
                         del self.requests[answer_id]
-
                     else:
-                        await self.sidebarMsg("Data not known:"+str(msg))
+                        await self.sidebarMsg(f"Data not known {cmd}:" + str(msg))
 
                 # answer to our request
                 elif code == "7":
@@ -450,15 +458,15 @@ class AirLatexProject:
                                           " not loaded. Typically reloading"
                                           " '%s/project' using the browser you"
                                           " used for login should reload the"
-                                          " cookies." % self.base_url)
+                                          " cookies." % self.session.url)
 
                 # unknown message
                 else:
-                    await self.sidebarMsg("Unknown Code:"+str(msg))
+                    await self.sidebarMsg("Unknown Code:" + str(msg))
         except (gen.Return, StopIteration):
             raise
         except Exception as e:
-            await self.sidebarMsg("Error: "+type(e).__name__+": "+str(e))
+            await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
             raise
 
     async def keep_alive(self):

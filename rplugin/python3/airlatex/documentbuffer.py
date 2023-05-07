@@ -2,7 +2,8 @@ import pynvim
 from difflib import SequenceMatcher
 from threading import RLock
 from hashlib import sha1
-from asyncio import create_task
+import asyncio
+from asyncio import create_task, Lock
 from logging import getLogger
 
 if "allBuffers" not in globals():
@@ -19,6 +20,9 @@ class DocumentBuffer:
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
         self.saved_buffer = None
+        self.threads = []
+        self.highlight = self.nvim.api.create_namespace('CommentGroup')
+        self.buffer_event = asyncio.Event()
 
     @staticmethod
     def getName(path):
@@ -64,18 +68,67 @@ class DocumentBuffer:
         self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
-    def write(self, lines):
-        self.log.debug("writing to buffer")
+        # Comment formatting
+        self.nvim.command(f"hi CommentGroup cterm=bold gui=bold")
 
-        def writeLines(buffer,lines):
-            buffer[0] = lines[0]
-            for l in lines[1:]:
-                buffer.append(l)
-            self.saved_buffer = buffer[:]
-        self.nvim.async_call(writeLines,self.buffer,lines)
+    def write(self, lines):
+        def writeLines(buffer, lines):
+          buffer[0] = lines[0]
+          for l in lines[1:]:
+            buffer.append(l)
+          self.saved_buffer = buffer[:]
+          self.buffer_event.set()
+        self.nvim.async_call(writeLines, self.buffer, lines)
 
     def compile(self):
         create_task(self.project_handler.compile())
+
+    def highlightComment(self, comments, thread):
+      resolved = comments[thread["id"]].get("resolved", False)
+      messages = comments[thread["id"]]["messages"]
+      self.log.debug(f">>>>> highlight {messages} {thread}")
+      if resolved:
+        return
+
+      start = thread["op"]["p"]
+      end = start + len(thread["op"]["c"])
+
+      self.log.debug(f">>>>> highlight {start} {end}")
+      self.log.debug(f">>>>> buffer len {len(self.buffer[:])}")
+
+      char_count, start_line, start_col, end_line, end_col = 0, 0, 0, 0, 0
+      for i, line in enumerate(self.buffer[:]):
+          line_length = len(line) + 1  # +1 for the newline character
+          if char_count + line_length > start and not start_line:
+              start_line, start_col = i, start - char_count
+          if char_count + line_length >= end:
+              end_line, end_col = i, end - char_count
+              break
+          char_count += line_length
+
+      # Apply the highlight
+      if start_line == end_line:
+          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, end_col)
+      else:
+          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, -1)
+          for line_num in range(start_line + 1, end_line):  # In-between lines
+              self.buffer.api.add_highlight(self.highlight, 'Error', line_num, 0, -1)
+          self.buffer.api.add_highlight(self.highlight, 'Error', end_line, 0, end_col)
+      self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
+
+    async def highlightComments(self, comments, threads=None):
+      # Clear any existing highlights
+      self.log.debug(f"highlight {self.highlight}")
+      def highlight_callback():
+        self.buffer.api.clear_namespace(self.highlight, 0, -1)
+        if threads:
+          self.threads = {thread["id"]: thread for thread in threads}
+        for thread in self.threads.values():
+          self.highlightComment(comments, thread)
+        self.log.debug("done")
+
+      await self.buffer_event.wait()
+      self.nvim.async_call(highlight_callback)
 
     def updateRemoteCursor(self, cursor):
         self.log.debug("updateRemoteCursor")
@@ -97,7 +150,7 @@ class DocumentBuffer:
         # nothing to do
         if len(self.saved_buffer) == len(self.buffer):
             skip = True
-            for ol,nl in zip(self.saved_buffer, self.buffer):
+            for ol, nl in zip(self.saved_buffer, self.buffer):
                 if hash(ol) != hash(nl):
                     skip = False
                     break
@@ -109,7 +162,7 @@ class DocumentBuffer:
         pos = [0]
         for row in self.saved_buffer:
             # pos.append(pos[-1]+ ( len(row)+1 if len(row) > 0 else 0 ) )
-            pos.append(pos[-1]+len(row)+1)
+            pos.append(pos[-1] + len(row)+1)
 
         # first calculate diff row-wise
         ops = []
@@ -189,26 +242,27 @@ class DocumentBuffer:
         self.log.debug(" -> sending ops")
         create_task(self.project_handler.sendOps(self.document, content_hash, ops))
 
-    def applyUpdate(self,ops):
+    def applyUpdate(self, packet, comments):
         self.log.debug("apply server updates to buffer")
 
         # adapt version
-        if "v" in ops:
-            v = ops["v"]
+        if "v" in packet:
+            v = packet["v"]
             if v >= self.document["version"]:
                 self.document["version"] = v+1
 
         # do nothing if no op included
-        if not 'op' in ops:
+        if not 'op' in packet:
             return
-        self.log.debug("got ops:"+str(ops))
-        ops = ops['op']
+        ops = packet['op']
+        self.log.debug("got ops:" + str(ops))
 
         # async execution
         def applyOps(self, ops):
             self.buffer_mutex.acquire()
             try:
                 for op in ops:
+                    self.log.debug(f"the op {op} and {'c' in op}")
 
                     # delete char and lines
                     if 'd' in op:
@@ -223,6 +277,17 @@ class DocumentBuffer:
                         s = op['i']
                         self._insert(self.saved_buffer,p,s)
                         self._insert(self.buffer,p,s)
+
+                    # add comment
+                    if 'c' in op:
+                        self.log.debug(f"So wtf")
+                        thread = {"id": op['t'],
+                                  "metadata": packet["meta"],
+                                  "op": op}
+                        self.threads[op['t']] = thread
+                        create_task(self.highlightComments(comments))
+            except Exception as e:
+                self.log.debug(f"{op} failed: {e}")
             finally:
                 self.buffer_mutex.release()
         self.nvim.async_call(applyOps, self, ops)
