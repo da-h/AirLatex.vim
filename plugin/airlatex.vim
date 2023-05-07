@@ -60,4 +60,19 @@ if !exists("g:AirLatexTrackChanges")
     let g:AirLatexTrackChanges=0
 endif
 
+if exists('*airline#parts#define_function')
+    function! AirLatexAirlineStatus()
+      let var = 'g:AirLatexTrackChanges'
+      if exists(var) && eval(var) == 1
+        return ' (tracking)'
+      else
+        return ''
+      endif
+    endfunction
+    " Define a new Airline part using the created function
+    call airline#parts#define_function('air_latex', 'AirLatexAirlineStatus')
+    let g:airline_section_a = airline#section#create(['mode', 'air_latex'])
+    call airline#update_statusline()
+endif
+
 " vim: set sw=4 sts=4 et fdm=marker:

@@ -91,18 +91,19 @@ class DocumentBuffer:
 
     def highlightComment(self, comments, thread):
       thread_id = thread["id"]
-      resolved = comments[thread_id].get("resolved", False)
-      messages = comments[thread_id]["messages"]
-      if resolved:
+      comments = comments.get(thread_id, {}) 
+      resolved = comments.get("resolved", False)
+      if resolved or not comments:
         return
+      messages = comments["messages"]
 
       start = thread["op"]["p"]
       end = start + len(thread["op"]["c"])
 
-      char_count, start_line, start_col, end_line, end_col = 0, 0, 0, 0, 0
+      char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
       for i, line in enumerate(self.buffer[:]):
           line_length = len(line) + 1  # +1 for the newline character
-          if char_count + line_length > start and not start_line:
+          if char_count + line_length > start and start_line == -1:
               start_line, start_col = i, start - char_count
           if char_count + line_length >= end:
               end_line, end_col = i, end - char_count
@@ -110,14 +111,21 @@ class DocumentBuffer:
           char_count += line_length
 
       # Apply the highlight
-      if start_line == end_line:
+      self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
+      if start == end:
+          start -= 1
+          end += 1
+          start_col = max(start_col - 1, 0)
+          end_col = min(end_col + 1, char_count + line_length - 1)
+          self.log.debug(f"same so {start_line} {start_col} {end_line} {end_col}")
+          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, end_col)
+      elif start_line == end_line:
           self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, end_col)
       else:
           self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, -1)
           for line_num in range(start_line + 1, end_line):  # In-between lines
               self.buffer.api.add_highlight(self.highlight, 'Error', line_num, 0, -1)
           self.buffer.api.add_highlight(self.highlight, 'Error', end_line, 0, end_col)
-      self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
       self.thread_intervals[start:end] = thread_id
 
     async def highlightComments(self, comments, threads=None):
