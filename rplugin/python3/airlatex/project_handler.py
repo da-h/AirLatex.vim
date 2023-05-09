@@ -62,6 +62,7 @@ class AirLatexProject:
 
         self.sidebar = session.sidebar
         self.session = session
+        self.session_id = None
 
         self.cookie = cookie
         self.wait_for = wait_for if str(wait_for).isnumeric() else None
@@ -122,6 +123,8 @@ class AirLatexProject:
                 buf.write(data)
             elif command == "updateRemoteCursor":
                 buf.updateRemoteCursor(data)
+            elif command == "clearRemoteCursor":
+                buf.clearRemoteCursor(data)
             elif command == "highlightComments":
                 await buf.highlightComments(self.comments, data)
 
@@ -197,6 +200,10 @@ class AirLatexProject:
         except Exception as e:
           logger.debug("\nComments response content:")
           logger.debug(f"{response.content}\n---\n{e}")
+
+    async def clearRemoteCursor(self, session_id):
+        for document in self.documents:
+            await self.bufferDo(id, "clearRemoteCursor", session_id)
 
     async def updateRemoteCursor(self, cursors):
         for cursor in cursors:
@@ -389,6 +396,7 @@ class AirLatexProject:
 
                     # connection accepted => join Project
                     if data["name"] == "connectionAccepted":
+                        _, self.session_id = data["args"]
                         await self.sidebarMsg("Connection Active.")
                         await self.send("cmd",{"name":"joinProject","args":[{"project_id":self.project["id"]}]})
 
@@ -408,7 +416,7 @@ class AirLatexProject:
                         for id in data["args"]:
                             if id in self.cursors:
                                 del self.cursors[id]
-                        await self.updateRemoteCursor(data["args"])
+                        await self.clearRemoteCursor(*data["args"])
 
                     # update applied => apply update to buffer
                     elif data["name"] == "otUpdateApplied":

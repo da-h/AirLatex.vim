@@ -26,6 +26,7 @@ class DocumentBuffer:
         self.highlight = self.nvim.api.create_namespace('CommentGroup')
         self.buffer_event = asyncio.Event()
         self.thread_intervals = IntervalTree()
+        self.cursors = {}
 
     @staticmethod
     def getName(path):
@@ -76,6 +77,7 @@ class DocumentBuffer:
 
         # Comment formatting
         self.nvim.command(f"hi CommentGroup ctermbg=58")
+        self.nvim.command(f"hi CursorGroup ctermbg=18")
 
     def write(self, lines):
         def writeLines(buffer, lines):
@@ -143,8 +145,33 @@ class DocumentBuffer:
       await self.buffer_event.wait()
       self.nvim.async_call(highlight_callback)
 
+    def clearRemoteCursor(self, remote_id):
+        if remote_id in self.cursors:
+          highlight = self.cursors[remote_id]
+          self.buffer.api.clear_namespace(highlight, 0, -1)
+
     def updateRemoteCursor(self, cursor):
         self.log.debug(f"updateRemoteCursor {cursor}")
+        # Don't draw the current cursor
+        # Client id if remote, id if local
+        if not cursor.get("id") or cursor.get("id") == self.project_handler.session_id:
+          return
+        def handle_cursor(cursor):
+          if cursor["id"] not in self.cursors:
+              highlight = self.nvim.api.create_namespace(cursor["id"])
+              self.cursors[cursor["id"]] = highlight
+          else:
+              highlight = self.cursors[cursor["id"]]
+              self.buffer.api.clear_namespace(highlight, 0, -1)
+          self.log.debug(f"highlighting {cursor} 'CursorGroup', {(cursor['row'], cursor['column'], cursor['column'])}")
+          if len(self.buffer[cursor["row"]]) == cursor["column"]:
+            self.buffer.api.add_highlight(highlight, 'CursorGroup', cursor["row"],
+                                          max(cursor["column"] - 1, 0), cursor["column"])
+          else:
+            self.buffer.api.add_highlight(highlight, 'CursorGroup', cursor["row"],
+                                          cursor["column"], cursor["column"] + 1)
+
+        self.nvim.async_call(handle_cursor, cursor)
 
     def showComments(self, comment_buffer):
         cursor = self.nvim.current.window.cursor
@@ -153,7 +180,6 @@ class DocumentBuffer:
                                                            1]]) + cursor[1]
         threads = self.thread_intervals[cursor_offset]
         if not threads:
-          # comment_buffer.hide()
           comment_buffer.buffer[:] = []
           return
         self.log.debug(f"found threads {threads}")
