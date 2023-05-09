@@ -69,13 +69,13 @@ class DocumentBuffer:
         self.nvim.command("cmap <buffer> w call AirLatex_Compile()<CR>")
         self.nvim.command("au CursorMoved <buffer> call AirLatex_WriteBuffer()")
         self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
+        self.nvim.command("au CursorMoved <buffer> call AirLatex_ShowComments()")
         self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
 
-        self.nvim.command("au CursorMoved <buffer> call AirLatex_ShowComments()")
-        self.nvim.command("command! -buffer -nargs=0 W call AirLatex_ShowComments()")
+        self.nvim.command("vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>")
 
         # Comment formatting
-        self.nvim.command(f"hi CommentGroup cterm=bold gui=bold")
+        self.nvim.command(f"hi CommentGroup ctermbg=58")
 
     def write(self, lines):
         def writeLines(buffer, lines):
@@ -118,14 +118,14 @@ class DocumentBuffer:
           start_col = max(start_col - 1, 0)
           end_col = min(end_col + 1, char_count + line_length - 1)
           self.log.debug(f"same so {start_line} {start_col} {end_line} {end_col}")
-          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, end_col)
+          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, end_col)
       elif start_line == end_line:
-          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, end_col)
+          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, end_col)
       else:
-          self.buffer.api.add_highlight(self.highlight, 'Error', start_line, start_col, -1)
+          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, -1)
           for line_num in range(start_line + 1, end_line):  # In-between lines
-              self.buffer.api.add_highlight(self.highlight, 'Error', line_num, 0, -1)
-          self.buffer.api.add_highlight(self.highlight, 'Error', end_line, 0, end_col)
+              self.buffer.api.add_highlight(self.highlight, 'CommentGroup', line_num, 0, -1)
+          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', end_line, 0, end_col)
       self.thread_intervals[start:end] = thread_id
 
     async def highlightComments(self, comments, threads=None):

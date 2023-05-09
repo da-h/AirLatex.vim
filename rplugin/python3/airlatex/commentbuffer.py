@@ -6,6 +6,7 @@ from logging import getLogger, NOTSET
 from airlatex.util import __version__, pynvimCatchException
 import time
 import textwrap
+import re
 
 
 class CommentBuffer:
@@ -28,6 +29,7 @@ class CommentBuffer:
         self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
         self.status = "Initializing"
         self.uilock = Lock()
+        self.drafting = False
 
     # ----------- #
     # AsyncIO API #
@@ -37,7 +39,7 @@ class CommentBuffer:
         self.log.debug_gui("trying to acquire (in trigger)")
         await self.uilock.acquire()
         self.log.debug_gui("triggerRefresh() -> event called")
-        # self.nvim.async_call(self.listProjects, all)
+        self.nvim.async_call(self._render)
 
     async def updateStatus(self, msg):
         self.log.debug_gui("trying to acquire (in update)")
@@ -99,8 +101,6 @@ class CommentBuffer:
 
         # throwaway buffer options (thanks NERDTree)
         self.nvim.command('syntax clear')
-        self.nvim.command('highlight User1 ctermfg=red guifg=red')
-        self.nvim.command('highlight User2 ctermfg=blue guifg=blue')
         self.nvim.command('setlocal noswapfile')
         self.nvim.command('setlocal buftype=nofile')
         self.nvim.command('setlocal bufhidden=hide')
@@ -116,8 +116,18 @@ class CommentBuffer:
         self.nvim.command('setlocal cursorline')
         self.nvim.command('setlocal filetype=airlatexcomment')
 
+        # self.nvim.command("nnoremap <buffer> q<C-n> :call AirLatex_NextComment()<enter>")
+        # self.nvim.command("cnoremap <buffer> w<CR> :call AirLatex_NextComment()<enter>")
+
         self.nvim.command("nnoremap <buffer> <C-n> :call AirLatex_NextComment()<enter>")
         self.nvim.command("nnoremap <buffer> <C-p> :call AirLatex_PrevComment()<enter>")
+
+        self.nvim.command("nnoremap <buffer> <enter> :call AirLatex_CommentEnter() <enter>")
+
+        self.nvim.command("au InsertEnter <buffer> :call AirLatex_DraftResponse()<enter>")
+
+        self.nvim.command("nnoremap <buffer> ZZ :call AirLatex_FinishDraft(1)<enter>")
+        self.nvim.command("nnoremap <buffer> ZQ :call AirLatex_FinishDraft(0)<enter>")
 
         # Register Mappings
         # self.nvim.command("nnoremap <silent> <buffer> q :q <enter>")
@@ -133,12 +143,22 @@ class CommentBuffer:
     @pynvimCatchException
     def render(self, project, threads):
       self.project = project
-      self.threads = [t.data for t in threads]
+      # Sort overlapping threads by time
+      def lookup(thread):
+        thread = project.comments.get(thread)
+        if not thread:
+          return -1
+        for m in thread.get("messages", []):
+          return m.get("timestamp", 0)
+        return -1
+
+      self.threads = sorted([t.data for t in threads], key=lookup)
       self.index = 0
       return self._render()
 
     @pynvimCatchException
     def _render(self):
+        self.drafting = False
         self.log.debug(f"id {self.threads[self.index]}")
         thread = self.project.comments.get(self.threads[self.index])
         self.log.debug(f"thread {thread}")
@@ -161,7 +181,9 @@ class CommentBuffer:
         if len(self.threads) > 1:
             indicator = f" ({self.index + 1} / {len(self.threads)})"
 
-        self.bufferappend(f"┄┄┄┄┄┄ Comments{indicator} ┄┄┄┄┄┄┄".center(size))
+        self.buffer[0] = f"┄┄┄┄┄┄ Comments{indicator} ┄┄┄┄┄┄┄".center(size)
+        if thread.get("resolved", False):
+            self.bufferappend("!! Resolved")
         self.bufferappend("")
 
         for message in thread["messages"]:
@@ -173,21 +195,21 @@ class CommentBuffer:
             short_date = time.strftime("%m/%d/%y %H:%M", time.gmtime(timestamp / 1000))
 
             space = size - len(user) - len(short_date) - 6
-            self.bufferappend(f"¶  {user} | {' ' * space}{short_date}")
-            self.bufferappend("┌" + '─' * (size - 1))
+            user = f"  {user} │"
+            self.bufferappend(f"¶{user} {' ' * space}{short_date}")
+            self.bufferappend("┌" + '─' * (len(user) - 1) + '┴' + '─' * (size - 2 -
+                                                                             len(user))+"┐")
             for line in textwrap.wrap(content, width=size - 3):
               self.bufferappend(f'│  {line}')
             self.bufferappend('└')
             self.bufferappend('')
 
-            if user == 'chris':
-                self.nvim.command(f"call matchadd('User1', '^¶  {user}')")
-            else:
-                self.nvim.command(f"call matchadd('User2', '^¶  {user}')")
-
+        if thread.get("resolved", False):
+          self.bufferappend(f" » reopen{' ' * (size - 4 - 7)}⬃⬃")
+        else:
+          self.bufferappend(f" » resolve{' ' * (size - 5 - 7)}✓✓")
         if self.uilock.locked():
             self.uilock.release()
-
 
     # ------- #
     # Actions #
@@ -195,7 +217,7 @@ class CommentBuffer:
 
     def show(self):
         if not self.visible:
-            current_buffer = self.nvim.current.buffer
+            current_win_id = self.nvim.api.get_current_win()
             self.nvim.command('let splitSize = g:AirLatexWinSize')
             self.nvim.command(f"""
                 exec 'vertical rightbelow sb{self.buffer.number}'
@@ -203,6 +225,7 @@ class CommentBuffer:
                 exec 'vertical rightbelow resize ' . splitSize
             """)
             create_task(self.triggerRefresh())
+            self.nvim.api.set_current_win(current_win_id)
 
     def hide(self):
         if self.visible:
@@ -214,6 +237,39 @@ class CommentBuffer:
               self.nvim.command('hide')
               # Return to the original buffer
               self.nvim.command('buffer ' + current_buffer.name)
+
+    @pynvimCatchException
+    def finishDraft(self, submit):
+      if self.drafting:
+        self.drafting = False
+        if not submit:
+          create_task(self.triggerRefresh())
+        else:
+          content = ""
+          for line in self.buffer:
+            if line.startswith("#"):
+              continue
+            content += line + "\n"
+          self.project.replyComment(self.threads[self.index], content)
+          create_task(self.triggerRefresh())
+      # If on the other page
+      else:
+        self.hide()
+
+    @pynvimCatchException
+    def prepCommentRespond(self):
+      if not self.drafting:
+        self.buffer[:] = []
+        self.buffer[0] = ""
+        self.buffer.append("")
+        self.buffer.append("#")
+        self.buffer.append("# Drafting comment.")
+        self.buffer.append("# Lines starting with '#' will be ignored.")
+        self.buffer.append("# Do ZZ to save and send.")
+        self.buffer.append("# Do ZQ to quit without sending.")
+        self.buffer.append("#")
+        self.drafting = True
+
 
     @pynvimCatchException
     def changeComment(self, change):
@@ -229,4 +285,10 @@ class CommentBuffer:
 
     @pynvimCatchException
     def cursorAction(self, key="enter"):
-      pass
+      if key == "enter":
+        resolve_pattern = re.compile(r'resolve\s+✓✓$')
+        if resolve_pattern.search(self.nvim.current.line):
+            self.project.resolveComment(self.threads[self.index])
+        resolve_pattern = re.compile(r'reopen\s+⬃⬃$')
+        if resolve_pattern.search(self.nvim.current.line):
+            self.project.reopenComment(self.threads[self.index])

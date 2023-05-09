@@ -12,7 +12,7 @@ from logging import DEBUG
 from tornado.httpclient import HTTPRequest
 from asyncio import Queue, wait_for, TimeoutError
 from logging import getLogger
-from asyncio import sleep
+from asyncio import sleep, create_task
 import requests
 
 from intervaltree import Interval, IntervalTree
@@ -152,9 +152,40 @@ class AirLatexProject:
           logger.debug("\nCompilation response content:")
           logger.debug(f"{response.content}\n---\n{e}")
 
+    async def adjustComment(self, thread, state, content=""):
+        resolve_url = f"{self.session.url}/project/{self.project['id']}/thread/{thread}/{state}"
+        payload = {
+              "_csrf": self.csrf
+            }
+        if content:
+          payload["content"] = content
+        post = lambda: self.session.httpHandler.post(resolve_url, headers={
+              'Cookie': self.cookie,
+            },
+            json=payload)
+        logger = self.log
+        response = (await self.session.nvim.loop.run_in_executor(None, post))
+        logger.debug(f"adjusting comment to {state}")
+        try:
+          assert response.status_code == 204, f"Bad status code {response.status_code}"
+          # We'll get a websocket confirmation, and handle it from there.
+          # Nothing else to do
+        except Exception as e:
+          logger.debug("\n {state} response content:")
+          logger.debug(f"{response.content}\n---\n{e}")
+
+    def resolveComment(self, thread):
+      create_task(self.adjustComment(thread, "resolve"))
+
+    def reopenComment(self, thread):
+      create_task(self.adjustComment(thread, "reopen"))
+
+    def replyComment(self, thread, content):
+      create_task(self.adjustComment(thread, "messages", content))
+
     async def getComments(self):
-        compile_url = f"{self.session.url}/project/{self.project['id']}/threads"
-        get = lambda: self.session.httpHandler.get(compile_url, headers={
+        comment_url = f"{self.session.url}/project/{self.project['id']}/threads"
+        get = lambda: self.session.httpHandler.get(comment_url, headers={
               'Cookie': self.cookie,
             })
         logger = self.log
@@ -402,8 +433,9 @@ class AirLatexProject:
                         if data["name"] in ("resolve-thread", "reopen-thread"):
                             thread_id = data["args"][0]
                             for doc in self.documents.values():
-                              if thread_id in doc.threads:
-                                doc.threads[thread_id]["resolved"] = (
+                              docbuf = doc["buffer"]
+                              if thread_id in docbuf.threads:
+                                docbuf.threads[thread_id]["resolved"] = (
                                     "resolve-thread" == data["name"])
 
                     # unknown message

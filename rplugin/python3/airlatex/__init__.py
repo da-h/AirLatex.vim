@@ -107,6 +107,33 @@ class AirLatex:
         if self.sidebar:
             self.sidebar.cursorAction()
 
+    @pynvim.function('AirLatex_CommentEnter', sync=True)
+    def commentEnter(self, args):
+        if self.comments:
+            self.comments.cursorAction()
+
+    @pynvim.function('AirLatex_CommentSelection', sync=True)
+    def commentSelection(self, args):
+        # start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
+        # end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
+        # lines = self.nvim.call('nvim_buf_get_lines', bufnr, start_line - 1, end_line, True)
+        # # Process the visual selection lines
+        # result = self.process_lines(lines)
+
+        if self.comments:
+            self.comments.cursorAction()
+
+    @pynvim.function('AirLatex_DraftResponse', sync=True)
+    def commentDraft(self, args):
+        if self.comments:
+            self.comments.prepCommentRespond()
+
+    @pynvim.function('AirLatex_FinishDraft', sync=True)
+    def commentRespond(self, args):
+        if self.comments:
+            self.comments.finishDraft(*args)
+
+
     @pynvim.function('AirLatex_ProjectLeave', sync=True)
     def projectLeave(self, args):
         if self.sidebar:
