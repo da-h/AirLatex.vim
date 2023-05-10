@@ -28,7 +28,7 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 
 # Add a comment
 # https://github.com/overleaf/overleaf/blob/959e6a73d8b0db78c4d4f7c844c935cf9157e5bc/libraries/ranges-tracker/index.cjs#L80
-# Generate an ID based on position, and then post that ID to
+# Generate an ID based on position ?, and then post that ID to
 # /project/>project id>/thread/<gen id>/messages
 # With format below
 
@@ -76,6 +76,7 @@ class AirLatexProject:
         self.documents = {}
         self.log = getLogger("AirLatex")
         self.ops_queue = Queue()
+        self.pending_comments = {}
 
     async def start(self):
         self.log.debug("Starting connection to server.")
@@ -186,6 +187,17 @@ class AirLatexProject:
     def replyComment(self, thread, content):
       create_task(self.adjustComment(thread, "messages", content))
 
+    def createComment(self, thread, doc_id, content):
+      # TODO
+      doc = self.documents[doc_id]["buffer"]
+      interval = doc.comment_selection[:].pop()
+      count = interval.begin
+      highlight = "\n".join(doc.buffer[:])[interval.begin:interval.end]
+      if not content or not highlight:
+          return
+      self.pending_comments[thread] = (doc_id, count, highlight)
+      create_task(self.adjustComment(thread, "messages", content))
+
     async def getComments(self):
         comment_url = f"{self.session.url}/project/{self.project['id']}/threads"
         get = lambda: self.session.httpHandler.get(comment_url, headers={
@@ -231,6 +243,7 @@ class AirLatexProject:
         # append new ops to buffer
         document["ops_buffer"] += ops
 
+        self.log.debug(f"{document}")
         # skip if nothing to do
         if len(document["ops_buffer"]) == 0:
             return
@@ -296,6 +309,7 @@ class AirLatexProject:
 
             # await first element
             document, content_hash, ops, track = await self.ops_queue.get()
+            self.log.debug(f"Got Op {document, content_hash, ops}")
             if document["_id"] not in all_ops:
                 all_ops[document["_id"]] = ops
             else:
@@ -305,6 +319,7 @@ class AirLatexProject:
             num = self.ops_queue.qsize()
             for i in range(num):
                 document, content_hash, ops, track = await self.ops_queue.get()
+                self.log.debug(f"Got Op {document, content_hash, ops}")
                 if document["_id"] not in all_ops:
                     all_ops[document["_id"]] = ops
                 else:
@@ -423,7 +438,7 @@ class AirLatexProject:
 
                         # nothing to do?
                         if "args" not in data:
-                            return
+                            continue
 
                         # apply update to buffer
                         for op in data["args"]:
@@ -437,6 +452,18 @@ class AirLatexProject:
                     # be very annoying
                     elif data["name"] in ("resolve-thread", "new-comment",
                                  "edit-message", "delete-message", "reopen-thread"):
+                        self.log.debug(data)
+                        if data["name"] == "new-comment":
+                          thread = data["args"][0]
+                          self.log.debug(f"yes new comment {thread} {self.pending_comments}")
+                          if thread in self.pending_comments:
+                            self.log.debug(f"We in")
+                            doc_id, count, content = self.pending_comments[thread]
+                            self.documents[doc_id]["buffer"].publishComment(thread,
+                                                                            count,
+                                                                            content)
+                            continue
+
                         self.comments = await self.getComments()
                         if data["name"] in ("resolve-thread", "reopen-thread"):
                             thread_id = data["args"][0]
@@ -445,6 +472,11 @@ class AirLatexProject:
                               if thread_id in docbuf.threads:
                                 docbuf.threads[thread_id]["resolved"] = (
                                     "resolve-thread" == data["name"])
+                        thread_id = data["args"][0]
+                        for doc in self.documents.values():
+                          docbuf = doc["buffer"]
+                          if thread_id in docbuf.threads:
+                            await docbuf.highlightComments(self.comments)
 
                     # unknown message
                     else:
@@ -486,6 +518,22 @@ class AirLatexProject:
 
                         # remove awaiting request
                         del self.requests[answer_id]
+                        # If this was confirmation on sending a comment, then we
+                        # want to cleanup
+                        contains_comments = False
+                        for op in request["args"][1]["op"]:
+                            # It's a comment!
+                            if 'c' in op:
+                                del self.pending_comments[op['t']]
+                                self.documents[id]["buffer"].threads[op['t']] = {
+                                    "id": op['t'],
+                                    "op": op
+                                }
+                                contains_comments = True
+                        if contains_comments:
+                          self.comments = await self.getComments()
+                          await self.documents[id]["buffer"].highlightComments(self.comments)
+                          await self.session.comments.triggerRefresh()
 
                     elif cmd == "clientTracking.getConnectedUsers":
                         for cursor in data[1]:

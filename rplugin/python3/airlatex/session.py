@@ -19,7 +19,7 @@ from logging import getLogger
 
 class AirLatexSession:
 
-    def __init__(self, domain, servername, sidebar, nvim, https=True):
+    def __init__(self, domain, servername, sidebar, comments, nvim, https=True):
         """
         Manages the Session to the server:
         - tries to login with credentials & checks wether these suffice as authentication
@@ -28,6 +28,7 @@ class AirLatexSession:
         """
 
         self.sidebar = sidebar
+        self.comments = comments
         self.nvim = nvim
         self.servername = servername
         self.domain = domain

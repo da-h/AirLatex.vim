@@ -78,6 +78,12 @@ def generateId():
     )
 
 
+def generateCommentId(increment):
+    increment = format(increment, 'x')  # convert to hex
+    id = generateId() + ('000000' + increment)[-6:]  # pad with zeros
+    return id
+
+
 def pynvimCatchException(fn, alt=None):
     def wrapped(self, *args, **kwargs):
         try:

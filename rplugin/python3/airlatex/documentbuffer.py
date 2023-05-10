@@ -10,6 +10,8 @@ from intervaltree import Interval, IntervalTree
 
 if "allBuffers" not in globals():
     allBuffers = {}
+
+
 class DocumentBuffer:
     allBuffers = allBuffers
 
@@ -22,8 +24,10 @@ class DocumentBuffer:
         self.initDocumentBuffer()
         self.buffer_mutex = RLock()
         self.saved_buffer = None
-        self.threads = []
-        self.highlight = self.nvim.api.create_namespace('CommentGroup')
+        self.threads = {}
+        self.highlight = self.nvim.api.create_namespace('AirLatexCommentGroup')
+        self.pending_selection = self.nvim.api.create_namespace('PendingCommentGroup')
+        self.comment_selection = IntervalTree()
         self.buffer_event = asyncio.Event()
         self.thread_intervals = IntervalTree()
         self.cursors = {}
@@ -35,6 +39,22 @@ class DocumentBuffer:
     @staticmethod
     def getExt(document):
         return document["name"].split(".")[-1]
+
+    @property
+    def content_hash(self):
+        # compute sha1-hash of current buffer
+        buffer_cpy = self.buffer[:]
+        current_len = 0
+        for row in buffer_cpy:
+            current_len += len(row)+1
+        current_len -= 1
+        tohash = ("blob "+str(current_len) + "\x00")
+        for b in buffer_cpy[:-1]:
+            tohash += b+"\n"
+        tohash += buffer_cpy[-1]
+        sha = sha1()
+        sha.update(tohash.encode())
+        return sha.hexdigest()
 
     @property
     def name(self):
@@ -76,7 +96,8 @@ class DocumentBuffer:
         self.nvim.command("vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>")
 
         # Comment formatting
-        self.nvim.command(f"hi CommentGroup ctermbg=58")
+        self.nvim.command(f"hi PendingCommentGroup ctermbg=190")
+        self.nvim.command(f"hi AirLatexCommentGroup ctermbg=58")
         self.nvim.command(f"hi CursorGroup ctermbg=18")
 
     def write(self, lines):
@@ -90,6 +111,41 @@ class DocumentBuffer:
 
     def compile(self):
         create_task(self.project_handler.compile())
+
+
+    def highlightRange(self, highlight, group, start_line, start_col, end_line, end_col):
+      if start_line == end_line:
+          self.buffer.api.add_highlight(highlight, group, start_line, start_col, end_col)
+      else:
+          self.buffer.api.add_highlight(highlight, group, start_line, start_col, -1)
+          for line_num in range(start_line + 1, end_line):  # In-between lines
+              self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
+          self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
+
+    def markComment(self, *line_info):
+      if self.comment_selection.is_empty():
+          self.comment_selection = IntervalTree()
+          start_line, start_col, end_line, end_col = line_info
+          position = self.cummulativePosition()
+          self.comment_selection.add(Interval(position[start_line] + start_col,
+                   position[end_line] + end_col))
+
+          # self.comment_selection = getSelection(*line_info)
+          self.highlightRange(self.pending_selection,
+                              "PendingCommentGroup",
+                              *line_info)
+
+    def publishComment(self, thread, count, content):
+      def callback():
+        self.log.debug(f"Calling {content, thread, count}")
+        create_task(self.project_handler.sendOps(self.document,
+                     self.content_hash,
+                     ops=[{
+                        "c": content,
+                        "p": count,
+                        "t": thread
+                       }]))
+      self.nvim.async_call(callback)
 
     def highlightComment(self, comments, thread):
       thread_id = thread["id"]
@@ -114,20 +170,15 @@ class DocumentBuffer:
 
       # Apply the highlight
       self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
+
       if start == end:
           start -= 1
           end += 1
           start_col = max(start_col - 1, 0)
           end_col = min(end_col + 1, char_count + line_length - 1)
           self.log.debug(f"same so {start_line} {start_col} {end_line} {end_col}")
-          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, end_col)
-      elif start_line == end_line:
-          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, end_col)
-      else:
-          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', start_line, start_col, -1)
-          for line_num in range(start_line + 1, end_line):  # In-between lines
-              self.buffer.api.add_highlight(self.highlight, 'CommentGroup', line_num, 0, -1)
-          self.buffer.api.add_highlight(self.highlight, 'CommentGroup', end_line, 0, end_col)
+
+      self.highlightRange(self.highlight, 'AirLatexCommentGroup', start_line, start_col, end_line, end_col)
       self.thread_intervals[start:end] = thread_id
 
     async def highlightComments(self, comments, threads=None):
@@ -174,6 +225,12 @@ class DocumentBuffer:
         self.nvim.async_call(handle_cursor, cursor)
 
     def showComments(self, comment_buffer):
+        if comment_buffer.drafting:
+          return
+        if comment_buffer.creation:
+          return
+        self.buffer.api.clear_namespace(self.pending_selection, 0, -1)
+        self.comment_selection = IntervalTree()
         cursor = self.nvim.current.window.cursor
         self.log.debug(f"cursor {cursor}")
         cursor_offset = sum([len(line) + 1 for line in self.buffer[:cursor[0] -
@@ -187,6 +244,12 @@ class DocumentBuffer:
         # comment_buffer.render(self.project_handler, threads)
         # messages = self.project_handler.comments[threads.pop().data]["messages"]
         # self.log.debug(f"messages {messages}")
+
+    def cummulativePosition(self):
+        pos = [0]
+        for row in self.saved_buffer:
+            pos.append(pos[-1] + len(row)+1)
+        return pos
 
     def writeBuffer(self):
         self.log.debug("writeBuffer: calculating changes to send")
@@ -211,10 +274,7 @@ class DocumentBuffer:
                 return
 
         # cummulative position of line
-        pos = [0]
-        for row in self.saved_buffer:
-            # pos.append(pos[-1]+ ( len(row)+1 if len(row) > 0 else 0 ) )
-            pos.append(pos[-1] + len(row)+1)
+        pos = self.cummulativePosition()
 
         # first calculate diff row-wise
         ops = []
@@ -275,26 +335,13 @@ class DocumentBuffer:
         # reverse, as last op should be applied first
         ops.reverse()
 
-        # compute sha1-hash of current buffer
-        buffer_cpy = self.buffer[:]
-        current_len = 0
-        for row in buffer_cpy:
-            current_len += len(row)+1
-        current_len -= 1
-        tohash = ("blob "+str(current_len) + "\x00")
-        for b in buffer_cpy[:-1]:
-            tohash += b+"\n"
-        tohash += buffer_cpy[-1]
-        sha = sha1()
-        sha.update(tohash.encode())
-        content_hash = sha.hexdigest()
-
         # update saved buffer & send command
         self.saved_buffer = self.buffer[:]
         self.log.debug(" -> sending ops")
 
         track = self.nvim.eval("g:AirLatexTrackChanges") == 1
-        create_task(self.project_handler.sendOps(self.document, content_hash,
+        create_task(self.project_handler.sendOps(self.document,
+                                                 self.content_hash,
                                                  ops, track))
 
     def applyUpdate(self, packet, comments):

@@ -77,7 +77,8 @@ class AirLatex:
                     password = keyring.get_password("airlatex_"+DOMAIN, username)
             # connect
             try:
-                self.session = AirLatexSession(DOMAIN, self.servername, self.sidebar, self.nvim, https=https)
+                self.session = AirLatexSession(DOMAIN, self.servername,
+                                               self.sidebar, self.comments, self.nvim, https=https)
                 create_task(self.session.login())
             except Exception as e:
                 self.sidebar.log.error(str(e))
@@ -114,14 +115,19 @@ class AirLatex:
 
     @pynvim.function('AirLatex_CommentSelection', sync=True)
     def commentSelection(self, args):
-        # start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
-        # end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
-        # lines = self.nvim.call('nvim_buf_get_lines', bufnr, start_line - 1, end_line, True)
-        # # Process the visual selection lines
-        # result = self.process_lines(lines)
-
-        if self.comments:
-            self.comments.cursorAction()
+        if self.comments.creation or self.comments.drafting:
+          return
+        start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
+        end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
+        def callback():
+          buffer = self.nvim.current.buffer
+          if buffer in DocumentBuffer.allBuffers:
+              document = DocumentBuffer.allBuffers[buffer]
+              self.comments.creation = document.document["_id"]
+              self.comments.project = document.project_handler
+              document.markComment(start_line - 1, start_col - 1, end_line - 1, end_col - 1)
+              self.comments.prepCommentCreation()
+        self.nvim.async_call(callback)
 
     @pynvim.function('AirLatex_DraftResponse', sync=True)
     def commentDraft(self, args):

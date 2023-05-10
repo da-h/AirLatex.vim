@@ -3,7 +3,7 @@ from time import gmtime, strftime
 from asyncio import Queue, Lock, sleep, create_task
 from airlatex.documentbuffer import DocumentBuffer
 from logging import getLogger, NOTSET
-from airlatex.util import __version__, pynvimCatchException
+from airlatex.util import pynvimCatchException, generateCommentId
 import time
 import textwrap
 import re
@@ -21,7 +21,7 @@ class CommentBuffer:
         self.cursor = (2, 0)
 
         self.project = None
-        self.threads = []
+        self.threads = {}
         self.index = 0
 
         self.symbol_open=self.nvim.eval("g:AirLatexArrowOpen")
@@ -29,7 +29,10 @@ class CommentBuffer:
         self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
         self.status = "Initializing"
         self.uilock = Lock()
+        self.creation = ""
         self.drafting = False
+
+        self.comment_id = 1;
 
     # ----------- #
     # AsyncIO API #
@@ -122,9 +125,9 @@ class CommentBuffer:
         self.nvim.command("nnoremap <buffer> <C-n> :call AirLatex_NextComment()<enter>")
         self.nvim.command("nnoremap <buffer> <C-p> :call AirLatex_PrevComment()<enter>")
 
-        self.nvim.command("nnoremap <buffer> <enter> :call AirLatex_CommentEnter() <enter>")
+        self.nvim.command("nnoremap <buffer> <enter> :call AirLatex_CommentEnter()<enter>")
 
-        self.nvim.command("au InsertEnter <buffer> :call AirLatex_DraftResponse()<enter>")
+        self.nvim.command("au InsertEnter <buffer> :call AirLatex_DraftResponse()")
 
         self.nvim.command("nnoremap <buffer> ZZ :call AirLatex_FinishDraft(1)<enter>")
         self.nvim.command("nnoremap <buffer> ZQ :call AirLatex_FinishDraft(0)<enter>")
@@ -159,6 +162,7 @@ class CommentBuffer:
     @pynvimCatchException
     def _render(self):
         self.drafting = False
+        self.creation = ""
         self.log.debug(f"id {self.threads[self.index]}")
         thread = self.project.comments.get(self.threads[self.index])
         self.log.debug(f"thread {thread}")
@@ -215,7 +219,7 @@ class CommentBuffer:
     # Actions #
     # ------- #
 
-    def show(self):
+    def show(self, change=False):
         if not self.visible:
             current_win_id = self.nvim.api.get_current_win()
             self.nvim.command('let splitSize = g:AirLatexWinSize')
@@ -225,12 +229,15 @@ class CommentBuffer:
                 exec 'vertical rightbelow resize ' . splitSize
             """)
             create_task(self.triggerRefresh())
-            self.nvim.api.set_current_win(current_win_id)
+            if not change:
+              self.nvim.api.set_current_win(current_win_id)
 
     def hide(self):
         if self.visible:
           current_buffer = self.nvim.current.buffer
-          if current_buffer == self.buffer:
+          if len(self.nvim.current.tabpage.windows) == 1:
+            self.nvim.command("q!")
+          elif current_buffer == self.buffer:
               self.nvim.command('hide')
           else:
               self.nvim.command('buffer AirLatexComments')
@@ -238,23 +245,54 @@ class CommentBuffer:
               # Return to the original buffer
               self.nvim.command('buffer ' + current_buffer.name)
 
+    @property
+    def content(self):
+      content = ""
+      for line in self.buffer:
+        if line.startswith("#"):
+          continue
+        content += line + "\n"
+      return content
+
     @pynvimCatchException
     def finishDraft(self, submit):
       if self.drafting:
         self.drafting = False
-        if not submit:
+        if not self.creation:
+          if not submit:
+            create_task(self.triggerRefresh())
+            return
+          self.project.replyComment(self.threads[self.index], self.content)
           create_task(self.triggerRefresh())
         else:
-          content = ""
-          for line in self.buffer:
-            if line.startswith("#"):
-              continue
-            content += line + "\n"
-          self.project.replyComment(self.threads[self.index], content)
-          create_task(self.triggerRefresh())
+          doc = self.creation
+          self.creation = ""
+          if not submit:
+            if self.previous_open:
+              self.buffer[:] = []
+              create_task(self.triggerRefresh())
+            else:
+              self.hide()
+            return
+          # TODO: Submit
+          thread = generateCommentId(self.comment_id)
+          self.comment_id += 1
+          self.project.createComment(thread, doc, self.content)
+
       # If on the other page
       else:
         self.hide()
+
+    @pynvimCatchException
+    def prepCommentCreation(self):
+      self.previous_open = self.visible
+      if self.visible:
+        window = self.nvim.call('bufwinnr', self.buffer.number)
+        self.nvim.command(f"exec '{window} wincmd w'")
+      else:
+        self.show(change=True)
+      # self.prepCommentRespond()
+      self.nvim.feedkeys('i')
 
     @pynvimCatchException
     def prepCommentRespond(self):
