@@ -15,6 +15,8 @@ from logging import getLogger
 from asyncio import sleep, create_task
 import requests
 
+from datetime import datetime
+
 from http.cookies import SimpleCookie
 
 from intervaltree import Interval, IntervalTree
@@ -29,25 +31,10 @@ codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # msg         : m[5]
 
 # Add a comment
-# https://github.com/overleaf/overleaf/blob/959e6a73d8b0db78c4d4f7c844c935cf9157e5bc/libraries/ranges-tracker/index.cjs#L80
-# Generate an ID based on position ?, and then post that ID to
-# /project/>project id>/thread/<gen id>/messages
-# With format below
-
-# Add to thread
-# Just post to /project/<project id>/thread/<thread id>/messages
-# With below format
-
-# Delete message
-# Delete type
-# https://www.overleaf.com/project/<proj>/thread/<thread>/messages/<comment id>
-
-# Post resolve
-# https://www.overleaf.com/project/<proj>/thread/<thread id>/resolve
-# post with just _csrf
-
-# Comment format
-# {content: "comment", _csrf: "<csrf>"}
+# Post to /project/>project id>/thread/<gen id>/messages
+# Get WS update
+# broadcast location in apply
+# get confirmation
 
 
 class AirLatexProject:
@@ -166,7 +153,8 @@ class AirLatexProject:
       logger.debug("\nCompilation response content:")
       logger.debug(f"{response.content}\n---\n{e}")
 
-  async def adjustComment(self, thread, state, content=""):
+  async def adjustComment(
+      self, thread, state, content="", resolve_state=None, retract=False):
     resolve_url = f"{self.session.url}/project/{self.project['id']}/thread/{thread}/{state}"
     payload = {"_csrf": self.csrf}
     if content:
@@ -185,26 +173,51 @@ class AirLatexProject:
     except Exception as e:
       logger.debug("\n {state} response content:")
       logger.debug(f"{response.content}\n---\n{e}")
+      if resolve_state is not None:
+        self.comments.get(thread, {})["resolved"] = resolve_state
+      if retract:
+        del self.comments[thread]
 
   def resolveComment(self, thread):
-    create_task(self.adjustComment(thread, "resolve"))
+    self.comments.get(thread, {})["resolved"] = True
+    create_task(self.adjustComment(thread, "resolve", resolve_state=False))
 
   def reopenComment(self, thread):
-    create_task(self.adjustComment(thread, "reopen"))
+    self.comments.get(thread, {})["resolved"] = False
+    create_task(self.adjustComment(thread, "reopen", resolve_state=True))
 
   def replyComment(self, thread, content):
+    self.comments.get(thread, {}).get("messages", []).append(
+        {
+            "user": {
+                "first_name": "** (pending)"
+            },
+            "content": content,
+            "timestamp": datetime.now().timestamp()
+        })
     create_task(self.adjustComment(thread, "messages", content))
 
   def createComment(self, thread, doc_id, content):
-    # TODO
     doc = self.documents[doc_id]["buffer"]
     interval = doc.comment_selection[:].pop()
     count = interval.begin
     highlight = "\n".join(doc.buffer[:])[interval.begin:interval.end]
     if not content or not highlight:
       return
+    self.comments[thread] = {
+        "messages":
+            [
+                {
+                    "user": {
+                        "first_name": "** (pending)"
+                    },
+                    "content": content,
+                    "timestamp": datetime.now().timestamp()
+                }
+            ]
+    }
     self.pending_comments[thread] = (doc_id, count, highlight)
-    create_task(self.adjustComment(thread, "messages", content))
+    create_task(self.adjustComment(thread, "messages", content, retract=True))
 
   async def getComments(self):
     comment_url = f"{self.session.url}/project/{self.project['id']}/threads"
@@ -496,28 +509,22 @@ class AirLatexProject:
             self.log.debug(data)
             if data["name"] == "new-comment":
               thread = data["args"][0]
-              self.log.debug(
-                  f"yes new comment {thread} {self.pending_comments}")
               if thread in self.pending_comments:
-                self.log.debug(f"We in")
                 doc_id, count, content = self.pending_comments[thread]
                 self.documents[doc_id]["buffer"].publishComment(
                     thread, count, content)
                 continue
 
             self.comments = await self.getComments()
-            if data["name"] in ("resolve-thread", "reopen-thread"):
-              thread_id = data["args"][0]
-              for doc in self.documents.values():
-                docbuf = doc["buffer"]
-                if thread_id in docbuf.threads:
-                  docbuf.threads[thread_id]["resolved"] = (
-                      "resolve-thread" == data["name"])
             thread_id = data["args"][0]
             for doc in self.documents.values():
               docbuf = doc["buffer"]
               if thread_id in docbuf.threads:
+                if data["name"] in ("resolve-thread", "reopen-thread"):
+                  docbuf.threads[thread_id]["resolved"] = (
+                      "resolve-thread" == data["name"])
                 await docbuf.highlightComments(self.comments)
+            create_task(self.session.comments.triggerRefresh())
 
           # unknown message
           else:

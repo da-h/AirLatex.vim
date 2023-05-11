@@ -17,7 +17,7 @@ class CommentBuffer:
     self.buffer = None
     self.buffer_write_i = 0
     self.cursorPos = []
-    self.log = getLogger("AirLatexComments")
+    self.log = getLogger("AirLatex")
     self.log.debug_gui("SideBar initialized.")
     self.cursor = (2, 0)
 
@@ -29,7 +29,6 @@ class CommentBuffer:
     self.symbol_closed = self.nvim.eval("g:AirLatexArrowClosed")
     self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
     self.status = "Initializing"
-    self.uilock = Lock()
     self.creation = ""
     self.drafting = False
 
@@ -39,15 +38,14 @@ class CommentBuffer:
   # AsyncIO API #
   # ----------- #
 
-  async def triggerRefresh(self, all=True):
+  async def triggerRefresh(self):
+    self.log.debug("Refresh")
     self.log.debug_gui("trying to acquire (in trigger)")
-    await self.uilock.acquire()
     self.log.debug_gui("triggerRefresh() -> event called")
     self.nvim.async_call(self._render)
 
   async def updateStatus(self, msg):
     self.log.debug_gui("trying to acquire (in update)")
-    await self.uilock.acquire()
     self.status = msg
     self.log.debug_gui("updateStatus()")
     self.nvim.async_call(self.updateStatusLine)
@@ -67,8 +65,6 @@ class CommentBuffer:
       # self.nvim.command('setlocal ma')
       self.statusline[0] = self.statusline[0][:15] + self.status
       # self.nvim.command('setlocal noma')
-      if releaseLock and self.uilock.locked():
-        self.uilock.release()
 
   @pynvimCatchException
   def bufferappend(self, arg, pos=[]):
@@ -84,7 +80,6 @@ class CommentBuffer:
     self.log.debug_gui("initGUI()")
     self.initCommentBuffer()
     self.hide()
-    create_task(self.uilock.acquire())
 
   @pynvimCatchException
   def initCommentBuffer(self):
@@ -171,10 +166,17 @@ class CommentBuffer:
 
   @pynvimCatchException
   def _render(self):
+    self.log.debug(f"in render {self.threads, self.index}")
+    self.buffer[:] = []
+
+    if not self.threads:
+      return
+    # Reset
     self.drafting = False
     self.creation = ""
-    self.log.debug(f"id {self.threads[self.index]}")
+
     thread = self.project.comments.get(self.threads[self.index])
+    self.log.debug(f"id {self.threads[self.index]}")
     self.log.debug(f"thread {thread}")
     if not thread:
       self.log.debug(f"all {self.threads}")
@@ -186,15 +188,13 @@ class CommentBuffer:
     # self.nvim.command('setlocal ma')
     self.cursorPos = []
 
-    self.buffer[:] = []
-    # Display Header
-
     size = self.nvim.eval("g:AirLatexWinSize")
 
     indicator = ""
     if len(self.threads) > 1:
       indicator = f" ({self.index + 1} / {len(self.threads)})"
 
+    # Display Header
     self.buffer[0] = f"┄┄┄┄┄┄ Comments{indicator} ┄┄┄┄┄┄┄".center(size)
     if thread.get("resolved", False):
       self.bufferappend("!! Resolved")
@@ -224,8 +224,6 @@ class CommentBuffer:
       self.bufferappend(f" » reopen{' ' * (size - 4 - 7)}⬃⬃")
     else:
       self.bufferappend(f" » resolve{' ' * (size - 5 - 7)}✓✓")
-    if self.uilock.locked():
-      self.uilock.release()
 
   # ------- #
   # Actions #
@@ -248,6 +246,11 @@ class CommentBuffer:
   def hide(self):
     if self.visible:
       current_buffer = self.nvim.current.buffer
+      self.threads = {}
+      self.index = 0
+      self.creation = ""
+      self.drafting = False
+      self.buffer[:] = []
       if len(self.nvim.current.tabpage.windows) == 1:
         self.nvim.command("q!")
       elif current_buffer == self.buffer:
@@ -291,6 +294,9 @@ class CommentBuffer:
         thread = generateCommentId(self.comment_id)
         self.comment_id += 1
         self.project.createComment(thread, doc, self.content)
+        self.threads = [thread]
+        self.index = 0
+        create_task(self.triggerRefresh())
 
     # If on the other page
     else:
@@ -304,7 +310,8 @@ class CommentBuffer:
       self.nvim.command(f"exec '{window} wincmd w'")
     else:
       self.show(change=True)
-    # self.prepCommentRespond()
+    self.index = 0
+    self.threads = {}
     self.nvim.feedkeys('i')
 
   @pynvimCatchException
@@ -339,6 +346,8 @@ class CommentBuffer:
       resolve_pattern = re.compile(r'resolve\s+✓✓$')
       if resolve_pattern.search(self.nvim.current.line):
         self.project.resolveComment(self.threads[self.index])
+        create_task(self.triggerRefresh())
       resolve_pattern = re.compile(r'reopen\s+⬃⬃$')
       if resolve_pattern.search(self.nvim.current.line):
         self.project.reopenComment(self.threads[self.index])
+        create_task(self.triggerRefresh())

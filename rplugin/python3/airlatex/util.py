@@ -64,6 +64,8 @@ def init_logger():
   return log
 
 
+# https://github.com/overleaf/overleaf/blob/959e6a73d8b0db78c4d4f7c844c935cf9157e5bc/libraries/ranges-tracker/index.cjs#L80
+# General track changes (new comment in thread / other tc
 def generateId():
   pid = format(random.randint(0, 32767), 'x')
   machine = format(random.randint(0, 16777216), 'x')
@@ -74,6 +76,7 @@ def generateId():
       '000000'[:6 - len(machine)] + machine + '0000'[:4 - len(pid)] + pid)
 
 
+# Specifically for creating comments
 def generateCommentId(increment):
   increment = format(increment, 'x')  # convert to hex
   id = generateId() + ('000000' + increment)[-6:]  # pad with zeros

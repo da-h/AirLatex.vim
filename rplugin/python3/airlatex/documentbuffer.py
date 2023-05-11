@@ -197,7 +197,6 @@ class DocumentBuffer:
     resolved = comments.get("resolved", False)
     if resolved or not comments:
       return
-    messages = comments["messages"]
 
     start = thread["op"]["p"]
     end = start + len(thread["op"]["c"])
@@ -231,6 +230,7 @@ class DocumentBuffer:
       if threads:
         self.threads = {thread["id"]: thread for thread in threads}
       for thread in self.threads.values():
+        self.log.debug(f"highlight {thread}")
         self.highlightComment(comments, thread)
       # Apply double highlights. Note we could extend this to the nth case, but
       # 2 seems fine
@@ -304,9 +304,6 @@ class DocumentBuffer:
       return
     self.log.debug(f"found threads {threads}")
     comment_buffer.render(self.project_handler, threads)
-    # comment_buffer.render(self.project_handler, threads)
-    # messages = self.project_handler.comments[threads.pop().data]["messages"]
-    # self.log.debug(f"messages {messages}")
 
   def cummulativePosition(self):
     # TODO: make a cached linked list that updates with changes

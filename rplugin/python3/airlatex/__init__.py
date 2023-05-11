@@ -137,6 +137,12 @@ class AirLatex:
       return
     start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
     end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
+    end_col += 1
+    # Visual line selection sets end_col to max int
+    # So just set to the next line.
+    if end_col == 2147483648:
+      end_col = 1
+      end_line += 1
 
     def callback():
       buffer = self.nvim.current.buffer
@@ -213,14 +219,14 @@ class AirLatex:
     buffer = self.nvim.current.buffer
     if buffer in DocumentBuffer.allBuffers:
       buffer = DocumentBuffer.allBuffers[buffer]
-      pos, offset = buffer.getCommentPosition(
-          **kwargs)
+      pos, offset = buffer.getCommentPosition(**kwargs)
       # Maybe print warning?
       if not offset:
         return
       self.nvim.current.window.cursor = pos
       self.nvim.command(f"let g:AirLatexCommentCount={offset}")
-      self.nvim.command(f"echo 'Comment {offset}/{len(buffer.thread_intervals)}'")
+      self.nvim.command(
+          f"echo 'Comment {offset}/{len(buffer.thread_intervals)}'")
 
   @pynvim.function('AirLatex_PrevCommentPosition')
   def prevCommentPosition(self, args):
