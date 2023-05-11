@@ -207,6 +207,29 @@ class AirLatex:
     if buffer in DocumentBuffer.allBuffers:
       DocumentBuffer.allBuffers[buffer].showComments(self.comments)
 
+  @pynvim.function('AirLatex_ChangeCommentPosition')
+  def changeCommentPosition(self, args):
+    kwargs = {"prev": args[-1] < 0, "next": args[-1] > 0}
+    buffer = self.nvim.current.buffer
+    if buffer in DocumentBuffer.allBuffers:
+      buffer = DocumentBuffer.allBuffers[buffer]
+      pos, offset = buffer.getCommentPosition(
+          **kwargs)
+      # Maybe print warning?
+      if not offset:
+        return
+      self.nvim.current.window.cursor = pos
+      self.nvim.command(f"let g:AirLatexCommentCount={offset}")
+      self.nvim.command(f"echo 'Comment {offset}/{len(buffer.thread_intervals)}'")
+
+  @pynvim.function('AirLatex_PrevCommentPosition')
+  def prevCommentPosition(self, args):
+    self.changeCommentPosition([-1])
+
+  @pynvim.function('AirLatex_NextCommentPosition')
+  def nextCommentPosition(self, args):
+    self.changeCommentPosition([1])
+
   @pynvim.function('AirLatex_NextComment')
   def nextComment(self, args):
     self.comments.changeComment(1)
