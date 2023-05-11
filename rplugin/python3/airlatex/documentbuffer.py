@@ -26,6 +26,7 @@ class DocumentBuffer:
     self.saved_buffer = None
     self.threads = {}
     self.highlight = self.nvim.api.create_namespace('AirLatexCommentGroup')
+    self.highlight2 = self.nvim.api.create_namespace('AirLatexDoubleCommentGroup')
     self.pending_selection = self.nvim.api.create_namespace(
         'PendingCommentGroup')
     self.comment_selection = IntervalTree()
@@ -99,6 +100,7 @@ class DocumentBuffer:
     # Comment formatting
     self.nvim.command(f"hi PendingCommentGroup ctermbg=190")
     self.nvim.command(f"hi AirLatexCommentGroup ctermbg=58")
+    self.nvim.command(f"hi AirLatexDoubleCommentGroup ctermbg=94")
     self.nvim.command(f"hi CursorGroup ctermbg=18")
 
   def write(self, lines):
@@ -126,18 +128,17 @@ class DocumentBuffer:
         self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
       self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
 
-  def markComment(self, *line_info):
+  def markComment(self, *lineinfo):
     if self.comment_selection.is_empty():
       self.comment_selection = IntervalTree()
-      start_line, start_col, end_line, end_col = line_info
-      position = self.cummulativePosition()
+      start_line, start_col, end_line, end_col = lineinfo
       self.comment_selection.add(
           Interval(
-              position[start_line] + start_col, position[end_line] + end_col))
+              self.getPosition(start_line, start_col),
+              self.getPosition(end_line, end_col)))
 
-      # self.comment_selection = getSelection(*line_info)
       self.highlightRange(
-          self.pending_selection, "PendingCommentGroup", *line_info)
+          self.pending_selection, "PendingCommentGroup", *lineinfo)
 
   def publishComment(self, thread, count, content):
 
@@ -166,16 +167,7 @@ class DocumentBuffer:
     start = thread["op"]["p"]
     end = start + len(thread["op"]["c"])
 
-    char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
-    for i, line in enumerate(self.buffer[:]):
-      line_length = len(line) + 1  # +1 for the newline character
-      if char_count + line_length > start and start_line == -1:
-        start_line, start_col = i, start - char_count
-      if char_count + line_length >= end:
-        end_line, end_col = i, end - char_count
-        break
-      char_count += line_length
-
+    char_count, start_line, start_col, end_line, end_col = self.getLineInfo(start, end)
     # Apply the highlight
     self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
 
@@ -183,7 +175,7 @@ class DocumentBuffer:
       start -= 1
       end += 1
       start_col = max(start_col - 1, 0)
-      end_col = min(end_col + 1, char_count + line_length - 1)
+      end_col = min(end_col + 1, char_count + self.cummulativePosition()[end_line] - 1)
       self.log.debug(f"same so {start_line} {start_col} {end_line} {end_col}")
 
     self.highlightRange(
@@ -197,11 +189,28 @@ class DocumentBuffer:
 
     def highlight_callback():
       self.buffer.api.clear_namespace(self.highlight, 0, -1)
+      self.buffer.api.clear_namespace(self.highlight2, 0, -1)
       self.thread_intervals.clear()
       if threads:
         self.threads = {thread["id"]: thread for thread in threads}
       for thread in self.threads.values():
         self.highlightComment(comments, thread)
+      # Apply double highlights. Note we could extend this to the nth case, but
+      # 2 seems fine
+      overlapping_ranges = set()
+      for interval in self.thread_intervals:
+        overlaps = self.thread_intervals[interval.begin:interval.end]  # Exclude the interval itself
+        for overlap in overlaps:
+          if overlap == interval:
+            continue
+          overlapping_range = Interval(max(interval.begin, overlap.begin),
+                                       min(interval.end, overlap.end))
+          overlapping_ranges.add(overlapping_range)
+      for overlap in overlapping_ranges:
+          _, *lineinfo = self.getLineInfo(overlap.begin, overlap.end)
+          self.highlightRange(
+              self.highlight2, 'AirLatexDoubleCommentGroup', *lineinfo)
+
       self.log.debug("done")
 
     await self.buffer_event.wait()
@@ -250,8 +259,7 @@ class DocumentBuffer:
     self.comment_selection = IntervalTree()
     cursor = self.nvim.current.window.cursor
     self.log.debug(f"cursor {cursor}")
-    cursor_offset = sum(
-        [len(line) + 1 for line in self.buffer[:cursor[0] - 1]]) + cursor[1]
+    cursor_offset = self.getPosition(cursor[0] - 1, cursor[1])
     threads = self.thread_intervals[cursor_offset]
     if not threads:
       comment_buffer.buffer[:] = []
@@ -263,10 +271,26 @@ class DocumentBuffer:
     # self.log.debug(f"messages {messages}")
 
   def cummulativePosition(self):
+    # TODO: make a cached linked list that updates with changes
     pos = [0]
-    for row in self.saved_buffer:
+    for row in self.buffer[:]:
       pos.append(pos[-1] + len(row) + 1)
     return pos
+
+  def getPosition(self, row, col):
+    return self.cummulativePosition()[row] + col
+
+  def getLineInfo(self, start, end):
+    char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
+    for i, line in enumerate(self.buffer[:]):
+      line_length = len(line) + 1  # +1 for the newline character
+      if char_count + line_length > start and start_line == -1:
+        start_line, start_col = i, start - char_count
+      if char_count + line_length >= end:
+        end_line, end_col = i, end - char_count
+        break
+      char_count += line_length
+    return char_count, start_line, start_col, end_line, end_col
 
   def writeBuffer(self):
     self.log.debug("writeBuffer: calculating changes to send")
