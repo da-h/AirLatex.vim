@@ -4,101 +4,100 @@ import traceback
 from logging import NOTSET
 import random
 
-
 __version__ = "0.2"
 
 
 # Generate a timstamp with a length of 13 numbers
 def _genTimeStamp():
-    t = time.time()
-    t = str(t)
-    t = t[:10]+t[11:]
-    while len(t) < 13:
-        t += "0"
-    return t
+  t = time.time()
+  t = str(t)
+  t = t[:10] + t[11:]
+  while len(t) < 13:
+    t += "0"
+  return t
+
 
 # get logging
-logging_settings={
-    "level": "NOTSET",
-    "file": "AirLatex.log",
-    "gui": True
-}
+logging_settings = {"level": "NOTSET", "file": "AirLatex.log", "gui": True}
+
 
 class CustomLogRecord(logging.LogRecord):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.filename = self.filename.split(".")[0]
-        self.origin = f"{self.filename} / {self.funcName} #{self.lineno:<4}"
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.filename = self.filename.split(".")[0]
+    self.origin = f"{self.filename} / {self.funcName} #{self.lineno:<4}"
+
 
 def init_logger():
-    log = logging.getLogger("AirLatex")
+  log = logging.getLogger("AirLatex")
 
-    # user settings
-    level=logging_settings["level"]
-    file=logging_settings["file"]
+  # user settings
+  level = logging_settings["level"]
+  file = logging_settings["file"]
 
-    # gui related logging
-    DEBUG_LEVEL_GUI = 9
-    logging.addLevelName(DEBUG_LEVEL_GUI, "DEBUG_GUI")
-    def debug_gui(self, message, *args, **kws):
-        if self.isEnabledFor(DEBUG_LEVEL_GUI) and logging_settings["gui"]:
-            self._log(DEBUG_LEVEL_GUI, message, args, **kws)
-    logging.Logger.debug_gui = debug_gui
-    logging.DEBUG_GUI = DEBUG_LEVEL_GUI
+  # gui related logging
+  DEBUG_LEVEL_GUI = 9
+  logging.addLevelName(DEBUG_LEVEL_GUI, "DEBUG_GUI")
 
-    if level != "NOTSET":
+  def debug_gui(self, message, *args, **kws):
+    if self.isEnabledFor(DEBUG_LEVEL_GUI) and logging_settings["gui"]:
+      self._log(DEBUG_LEVEL_GUI, message, args, **kws)
 
-        # formatter
-        logging.setLogRecordFactory(CustomLogRecord)
-        f = logging.Formatter('%(origin)40s: %(message)s')
+  logging.Logger.debug_gui = debug_gui
+  logging.DEBUG_GUI = DEBUG_LEVEL_GUI
 
-        # handler
-        h = logging.FileHandler(file, "w")
-        h.setFormatter(f)
+  if level != "NOTSET":
 
-        # logger settings
-        log.addHandler(h)
-        log.setLevel(getattr(logging,level))
+    # formatter
+    logging.setLogRecordFactory(CustomLogRecord)
+    f = logging.Formatter('%(origin)40s: %(message)s')
 
-    return log
+    # handler
+    h = logging.FileHandler(file, "w")
+    h.setFormatter(f)
+
+    # logger settings
+    log.addHandler(h)
+    log.setLevel(getattr(logging, level))
+
+  return log
 
 
 def generateId():
-    pid = format(random.randint(0, 32767), 'x')
-    machine = format(random.randint(0, 16777216), 'x')
-    timestamp = format(int(time.time()), 'x')
+  pid = format(random.randint(0, 32767), 'x')
+  machine = format(random.randint(0, 16777216), 'x')
+  timestamp = format(int(time.time()), 'x')
 
-    return (
-        '00000000'[: 8 - len(timestamp)] +
-        timestamp +
-        '000000'[: 6 - len(machine)] +
-        machine +
-        '0000'[: 4 - len(pid)] +
-        pid
-    )
+  return (
+      '00000000'[:8 - len(timestamp)] + timestamp +
+      '000000'[:6 - len(machine)] + machine + '0000'[:4 - len(pid)] + pid)
 
 
 def generateCommentId(increment):
-    increment = format(increment, 'x')  # convert to hex
-    id = generateId() + ('000000' + increment)[-6:]  # pad with zeros
-    return id
+  increment = format(increment, 'x')  # convert to hex
+  id = generateId() + ('000000' + increment)[-6:]  # pad with zeros
+  return id
 
 
 def pynvimCatchException(fn, alt=None):
-    def wrapped(self, *args, **kwargs):
-        try:
-            return fn(self, *args, **kwargs)
-        except Exception as e:
-            self.status = "Error: %s. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code." % str(e)
-            self.updateStatusLine()
 
-            if self.log.level == NOTSET:
-                self.nvim.err_write(traceback.format_exc(e)+"\n")
-            else:
-                self.log.exception("Uncatched exception occured. Please consider the log file.")
-                self.log.exception(str(e))
+  def wrapped(self, *args, **kwargs):
+    try:
+      return fn(self, *args, **kwargs)
+    except Exception as e:
+      self.status = "Error: %s. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code." % str(
+          e)
+      self.updateStatusLine()
 
-            if alt is not None:
-                return alt
-    return wrapped
+      if self.log.level == NOTSET:
+        self.nvim.err_write(traceback.format_exc(e) + "\n")
+      else:
+        self.log.exception(
+            "Uncatched exception occured. Please consider the log file.")
+        self.log.exception(str(e))
 
+      if alt is not None:
+        return alt
+
+  return wrapped
