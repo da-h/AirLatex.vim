@@ -15,6 +15,9 @@ from logging import getLogger
 from asyncio import sleep, create_task
 import requests
 
+from http.cookies import SimpleCookie
+
+
 from intervaltree import Interval, IntervalTree
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
@@ -366,8 +369,18 @@ class AirLatexProject:
             await self.sidebarMsg("Connecting Websocket.")
             self.project["connected"] = True
             self.log.debug("Initializing websocket connection to "+self.url)
+            if "GCLB=" not in self.cookie:
+              request = HTTPRequest(self.url, headers={'Cookie': self.cookie}, validate_cert=self.validate_cert)
+              self.ws = await websocket_connect(request)
+              # Should set the GCLB value
+              for set_cookie_header in self.ws.headers.get_list('Set-Cookie'):
+                  cookie = SimpleCookie(set_cookie_header)
+                  for key, morsel in cookie.items():
+                      self.session.httpHandler.cookies.set(key, morsel.value)
+              self.cookie = self.session.cookies,
             request = HTTPRequest(self.url, headers={'Cookie': self.cookie}, validate_cert=self.validate_cert)
             self.ws = await websocket_connect(request)
+
         except Exception as e:
             await self.sidebarMsg("Connection Error: "+str(e))
         else:

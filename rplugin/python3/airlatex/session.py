@@ -217,6 +217,10 @@ class AirLatexSession:
                     create_task(self.sidebar.updateStatus("Could not retrieve project list: %s. You can check the response page under: %s " % (str(e),f.name)))
                 create_task(self.sidebar.triggerRefresh())
 
+    @property
+    def cookies(self):
+        return "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
+
     async def connectProject(self, project):
         """
         Initializing connection to a project.
@@ -234,11 +238,10 @@ class AirLatexSession:
 
         # start connection
         anim_status.cancel()
-        cookie_str = "; ".join(name + "=" + value for name, value in self.httpHandler.cookies.get_dict().items())
         # Side bar set command in document
         airlatexproject = AirLatexProject(await self._getWebSocketURL(),
                                           project, csrf, self,
-                                          cookie=cookie_str,
+                                          cookie=self.cookies,
                                           wait_for=self.wait_for,
                                           validate_cert=self.httpHandler.verify)
         create_task(airlatexproject.start())

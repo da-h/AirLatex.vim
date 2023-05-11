@@ -184,7 +184,9 @@ class SideBar:
                     if "source" in project:
                         self.bufferappend("   source: "+project['source'])
                     if "owner" in project:
-                        self.bufferappend("   owner: "+project['owner']['first_name']+(" "+project['owner']['last_name'] if "last_name" in project["owner"] else ""))
+                        self.bufferappend("   owner: "
+                                          +project['owner'].get('first_name', '')+
+                                          (" " + project['owner'].get('last_name') if "last_name" in project["owner"] else ""))
                     if "lastUpdated" in project:
                         self.bufferappend("   last change: "+project['lastUpdated'])
                     if not (project["lastUpdatedBy"] == None):

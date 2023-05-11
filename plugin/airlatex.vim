@@ -31,6 +31,10 @@ if !exists("g:AirLatexDomain")
     let g:AirLatexDomain="www.overleaf.com"
 endif
 
+if !exists("g:AirLatexCookieKey")
+    let g:AirLatexCookieKey="overleaf_session2"
+endif
+
 if !exists("g:AirLatexLogLevel")
     let g:AirLatexLogLevel="NOTSET"
 endif
@@ -58,6 +62,19 @@ endif
 
 if !exists("g:AirLatexTrackChanges")
     let g:AirLatexTrackChanges=0
+endif
+
+if !exists("g:AirLatexUsername") && exists("g:AirLatexCookieDB")
+    let AirLatexSecret = trim(system(
+    \   "sqlite3 'file:"
+    \   . glob(g:AirLatexCookieDB)
+    \   . "?immutable=1' 'select value from main.moz_cookies where name=\""
+    \   . g:AirLatexCookieKey
+    \   . "\" and host=\""
+    \   . matchstr(g:AirLatexDomain, '\zs\..*')
+    \   . "\";'"
+    \))
+    let g:AirLatexUsername = "cookies:" . g:AirLatexCookieKey . "=" . AirLatexSecret
 endif
 
 if exists('*airline#parts#define_function')

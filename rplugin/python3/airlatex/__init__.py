@@ -27,6 +27,8 @@ class AirLatex:
 
     @pynvim.command('AirLatex', nargs=0, sync=True)
     def openSidebar(self):
+        if self.session:
+          return
 
         # update user settings for logging
         logging_settings["level"]=self.nvim.eval("g:AirLatexLogLevel")
@@ -55,34 +57,33 @@ class AirLatex:
         self.sidebar.show()
 
         # ensure session to exist
-        if not self.session:
-            DOMAIN = self.nvim.eval("g:AirLatexDomain")
-            https = self.nvim.eval("g:AirLatexUseHTTPS")
-            username = self.nvim.eval("g:AirLatexUsername")
+        DOMAIN = self.nvim.eval("g:AirLatexDomain")
+        https = self.nvim.eval("g:AirLatexUseHTTPS")
+        username = self.nvim.eval("g:AirLatexUsername")
 
-            # query credentials
-            if username.startswith("cookies"):
-                if not username[7:]:
-                    self.nvim.command("call inputsave()")
-                    self.nvim.command("let user_input = input(\"Cookie given '%s'.\nLogin in your browser & paste it here: \")" % (DOMAIN))
-                    self.nvim.command("call inputrestore()")
-                    self.nvim.command("let g:AirLatexUsername='cookies:%s'" % self.nvim.eval("user_input"))
-            else:
+        # query credentials
+        if username.startswith("cookies"):
+            if not username[7:]:
+                self.nvim.command("call inputsave()")
+                self.nvim.command("let user_input = input(\"Cookie given '%s'.\nLogin in your browser & paste it here: \")" % (DOMAIN))
+                self.nvim.command("call inputrestore()")
+                self.nvim.command("let g:AirLatexUsername='cookies:%s'" % self.nvim.eval("user_input"))
+        else:
+            password = keyring.get_password("airlatex_"+DOMAIN, username)
+            while password is None:
+                self.nvim.command("call inputsave()")
+                self.nvim.command("let user_input = input(\"No Password found for '%s' and user '%s'.\nType it in to store it in keyring: \")" % (DOMAIN, username))
+                self.nvim.command("call inputrestore()")
+                keyring.set_password("airlatex_"+DOMAIN, username, self.nvim.eval("user_input"))
                 password = keyring.get_password("airlatex_"+DOMAIN, username)
-                while password is None:
-                    self.nvim.command("call inputsave()")
-                    self.nvim.command("let user_input = input(\"No Password found for '%s' and user '%s'.\nType it in to store it in keyring: \")" % (DOMAIN, username))
-                    self.nvim.command("call inputrestore()")
-                    keyring.set_password("airlatex_"+DOMAIN, username, self.nvim.eval("user_input"))
-                    password = keyring.get_password("airlatex_"+DOMAIN, username)
-            # connect
-            try:
-                self.session = AirLatexSession(DOMAIN, self.servername,
-                                               self.sidebar, self.comments, self.nvim, https=https)
-                create_task(self.session.login())
-            except Exception as e:
-                self.sidebar.log.error(str(e))
-                self.nvim.out_write(str(e)+"\n")
+        # connect
+        try:
+            self.session = AirLatexSession(DOMAIN, self.servername,
+                                           self.sidebar, self.comments, self.nvim, https=https)
+            create_task(self.session.login())
+        except Exception as e:
+            self.sidebar.log.error(str(e))
+            self.nvim.out_write(str(e)+"\n")
 
     @pynvim.command('AirLatexResetPassword', nargs=0, sync=True)
     def resetPassword(self):
