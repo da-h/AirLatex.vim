@@ -32,6 +32,8 @@ class CommentBuffer:
     self.creation = ""
     self.drafting = False
 
+    self.uilock = Lock()
+
     self.comment_id = 1
 
   # ----------- #
@@ -41,7 +43,7 @@ class CommentBuffer:
   async def triggerRefresh(self):
     self.log.debug("Refresh")
     self.log.debug_gui("trying to acquire (in trigger)")
-    self.log.debug_gui("triggerRefresh() -> event called")
+    await self.uilock.acquire()
     self.nvim.async_call(self._render)
 
   async def updateStatus(self, msg):
@@ -149,6 +151,9 @@ class CommentBuffer:
 
   @pynvimCatchException
   def render(self, project, threads):
+    if self.uilock.locked():
+      return
+
     self.project = project
 
     # Sort overlapping threads by time
@@ -162,7 +167,7 @@ class CommentBuffer:
 
     self.threads = sorted([t.data for t in threads], key=lookup)
     self.index = 0
-    return self._render()
+    create_task(self.triggerRefresh())
 
   @pynvimCatchException
   def _render(self):
@@ -224,6 +229,8 @@ class CommentBuffer:
       self.bufferappend(f" » reopen{' ' * (size - 4 - 7)}⬃⬃")
     else:
       self.bufferappend(f" » resolve{' ' * (size - 5 - 7)}✓✓")
+    if self.uilock.locked():
+      self.uilock.release()
 
   # ------- #
   # Actions #
@@ -231,6 +238,9 @@ class CommentBuffer:
 
   def show(self, change=False):
     if not self.visible:
+      # Create window (triggers au on document)
+      # Move back (triggers au on document)
+      # So set debounce prior ro creating window
       current_win_id = self.nvim.api.get_current_win()
       self.nvim.command('let splitSize = g:AirLatexWinSize')
       self.nvim.command(
@@ -239,7 +249,6 @@ class CommentBuffer:
                 exec 'buffer {self.buffer.number}'
                 exec 'vertical rightbelow resize ' . splitSize
             """)
-      create_task(self.triggerRefresh())
       if not change:
         self.nvim.api.set_current_win(current_win_id)
 
@@ -331,7 +340,7 @@ class CommentBuffer:
   @pynvimCatchException
   def changeComment(self, change):
     self.index = (self.index + change) % len(self.threads)
-    self._render()
+    create_task(self.triggerRefresh())
 
   @pynvimCatchException
   def toggle(self):
