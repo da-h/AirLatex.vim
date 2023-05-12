@@ -129,7 +129,9 @@ class DocumentBuffer:
     # Buffer bindings
     self.nvim.command(f"""
       vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>
-      cmap <buffer> w call AirLatex_Compile()<CR>
+      cmap <buffer> w call AirLatex_GitSync(input('Commit Message: '))<CR>
+      " Alternatively
+      " cmap <buffer> w call AirLatex_Compile()<CR>
     """)
 
     # Comment formatting
@@ -139,6 +141,11 @@ class DocumentBuffer:
       hi AirLatexDoubleCommentGroup ctermbg=94
       hi CursorGroup ctermbg=18
     """)
+
+  def syncGit(self, message=None):
+    while not message:
+      message = self.nvim.funcs.input('Commit Message: ')
+    create_task(self.project_handler.syncGit(message))
 
   def compile(self):
     create_task(self.project_handler.compile())
@@ -280,13 +287,11 @@ class DocumentBuffer:
     self.nvim.async_call(highlight_callback)
 
   def showComments(self, comment_buffer):
-    self.log.debug(f"Show comments {self.augroup}")
     if comment_buffer.drafting or comment_buffer.creation:
       return
     self.buffer.api.clear_namespace(self.pending_selection, 0, -1)
     self.comment_selection = IntervalTree()
     cursor = self.nvim.current.window.cursor
-    self.log.debug(f"cursor {cursor}")
     cursor_offset = self.getPosition(cursor[0] - 1, cursor[1])
     threads = self.thread_intervals[cursor_offset]
     if not threads:

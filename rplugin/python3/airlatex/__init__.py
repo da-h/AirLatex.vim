@@ -181,6 +181,12 @@ class AirLatex:
     if buffer in DocumentBuffer.allBuffers:
       DocumentBuffer.allBuffers[buffer].compile()
 
+  @pynvim.function('AirLatex_GitSync', sync=True)
+  def compile(self, args):
+    buffer = self.nvim.current.buffer
+    if buffer in DocumentBuffer.allBuffers:
+      DocumentBuffer.allBuffers[buffer].syncGit(*args)
+
   @pynvim.function('AirLatexToggle', sync=True)
   def toggle(self, args):
     self.sidebar.toggle()
@@ -209,7 +215,6 @@ class AirLatex:
 
   @pynvim.function('AirLatex_ShowComments')
   def showComments(self, args):
-    self.log.debug("OK then")
     buffer = self.nvim.current.buffer
     if buffer in DocumentBuffer.allBuffers:
       DocumentBuffer.allBuffers[buffer].showComments(self.comments)

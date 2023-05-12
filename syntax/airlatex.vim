@@ -16,6 +16,7 @@ syn match AirLatexProjErrorVal   #:\s\zs.\+# containedin=AirLatexProjError
 syn match AirLatexStatus         #^\s.\+\s:\s.\+#
 syn match AirLatexStatusValue    #:\zs.\+# contained containedin=AirLatexStatus
 syn match AirLatexStatusOnline   #Online# contained containedin=AirLatexStatusValue
+syn match AirLatexStatusConnected   #Connected# contained containedin=AirLatexStatusValue
 syn match AirLatexStatusOffline  #Offline# contained containedin=AirLatexStatusValue
 syn match AirLatexStatusError  #Error.*# contained containedin=AirLatexStatusValue
 
@@ -37,6 +38,7 @@ hi def link AirLatexProjErrorVal Todo
 
 hi def link AirLatexStatus Function
 hi def link AirLatexStatusOnline String
+hi def link AirLatexStatusConnected String
 hi def link AirLatexStatusOffline Todo
 hi def link AirLatexStatusValue Number
 hi def link AirLatexStatusError Todo

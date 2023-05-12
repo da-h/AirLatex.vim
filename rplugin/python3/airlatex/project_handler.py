@@ -78,23 +78,29 @@ class AirLatexProject:
     await self.connect()
 
   async def send(self, message_type, message=None, event=None):
-    if message_type == "keep_alive":
-      self.log.debug("Send keep_alive.")
-      self.ws.write_message("2::")
-      return
-    assert message is not None
-    message_content = json.dumps(message) if isinstance(
-        message, dict) else message
-    message["event"] = event
-    if message_type == "update":
-      self.log.debug("Sending update: " + message_content)
-      self.ws.write_message("5:::" + message_content)
-    elif message_type == "cmd":
-      cmd_id = next(self.command_counter)
-      msg = "5:" + str(cmd_id) + "+::" + message_content
-      self.log.debug("Sendng cmd: " + msg)
-      self.requests[str(cmd_id)] = message
-      self.ws.write_message(msg)
+    try:
+      if message_type == "keep_alive":
+        self.log.debug("Send keep_alive.")
+        self.ws.write_message("2::")
+        return
+      assert message is not None
+      message_content = json.dumps(message) if isinstance(
+          message, dict) else message
+      message["event"] = event
+      if message_type == "update":
+        self.log.debug("Sending update: " + message_content)
+        self.ws.write_message("5:::" + message_content)
+      elif message_type == "cmd":
+        cmd_id = next(self.command_counter)
+        msg = "5:" + str(cmd_id) + "+::" + message_content
+        self.log.debug("Sendng cmd: " + msg)
+        self.requests[str(cmd_id)] = message
+        self.ws.write_message(msg)
+    except Exception as e:
+      await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.disconnect(
+          f"Send failed: {e}")
+      raise
 
   async def sidebarMsg(self, msg):
     self.log.debug_gui("sidebarMsg: %s" % msg)
@@ -120,6 +126,28 @@ class AirLatexProject:
         buf.clearRemoteCursor(data)
       elif command == "highlightComments":
         await buf.highlightComments(self.comments, data)
+
+  async def syncGit(self, message):
+    self.log.debug(f"Syncing. {str(self.project)}")
+    # https://www.overleaf.com/project/<project>/github-sync/merge
+    compile_url = f"{self.session.url}/project/{self.project['id']}/github-sync/merge"
+    post = lambda: self.session.httpHandler.post(
+        compile_url,
+        headers={
+            'Cookie': self.cookie,
+            'x-csrf-token': self.csrf,
+            'content-type': 'application/json'
+        },
+        json={
+          "message": message
+        })
+    response = (await self.session.nvim.loop.run_in_executor(None, post))
+    try:
+      assert response.status_code == 200, f"Bad status code {response.status_code}"
+      self.log.debug("Synced.")
+    except Exception as e:
+      self.log.debug("\nCompilation response content:")
+      self.log.debug(f"{response.content}\n---\n{e}")
 
   async def compile(self):
     self.log.debug(f"Compiling. {str(self.project)}")
@@ -329,30 +357,40 @@ class AirLatexProject:
     async def dequeue(all_ops):
       document, content_hash, ops, track, close = await self.ops_queue.get()
       if close:
-        return False
+        return close, ()
       self.log.debug(f"Got Op {document, content_hash, ops}")
       if document["_id"] not in all_ops:
         all_ops[document["_id"]] = ops
       else:
         all_ops[document["_id"]] += ops
-      return True
+      return close, (document, content_hash, ops, track)
 
-    # collects ops and sends them in a batch, server is ready
-    while self.project["connected"]:
-      all_ops = {}
-      # await first element
-      if not await dequeue(all_ops):
-        return
-      # get also all other elements that are currently in queue
-      num = self.ops_queue.qsize()
-      for i in range(num):
-        if not await dequeue(all_ops):
+    try:
+      # collects ops and sends them in a batch, server is ready
+      # Connected might not be set yet.
+      # Fine, because disconnection will explicitly set to false as well.
+      while self.project.get("connected", True):
+        all_ops = {}
+        # await first element
+        close, payload = await dequeue(all_ops)
+        if close:
           return
+        # get also all other elements that are currently in queue
+        num = self.ops_queue.qsize()
+        for i in range(num):
+          close, payload = await dequeue(all_ops)
+          if close:
+            return
 
-      # apply all ops one after another
-      for doc_id, ops in all_ops.items():
-        document = self.documents[doc_id]
-        await self._sendOps(document, content_hash, ops, track)
+        # apply all ops one after another
+        for doc_id, ops in all_ops.items():
+          document = self.documents[doc_id]
+          await self._sendOps(*payload)
+    except Exception as e:
+      await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.disconnect(
+          f"Op Failed: {e}")
+      raise
 
   async def joinDocument(self, buffer):
 
@@ -376,6 +414,7 @@ class AirLatexProject:
         })
 
   async def disconnect(self, msg="Disconnected."):
+    # Cleanup and inform threads
     self.log.debug("Connection Closed. Reason:" + msg)
     self.project["msg"] = msg
     self.project["open"] = False
@@ -620,6 +659,8 @@ class AirLatexProject:
       raise
     except Exception as e:
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.disconnect(
+          f"WS loop Failed: {e}")
       raise
 
   async def keep_alive(self):
