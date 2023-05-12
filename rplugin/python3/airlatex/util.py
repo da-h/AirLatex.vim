@@ -1,3 +1,4 @@
+import traceback
 import time
 import logging
 import traceback
@@ -89,15 +90,15 @@ def pynvimCatchException(fn, alt=None):
     try:
       return fn(self, *args, **kwargs)
     except Exception as e:
-      self.status = "Error: %s. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code." % str(
-          e)
+      self.status = f"Error: {e}. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code."
+      self.log.debug(traceback.format_exc())
       self.updateStatusLine()
 
       if self.log.level == NOTSET:
         self.nvim.err_write(traceback.format_exc(e) + "\n")
       else:
         self.log.exception(
-            "Uncatched exception occured. Please consider the log file.")
+            "Uncaught exception occured. Please consider the log file.")
         self.log.exception(str(e))
 
       if alt is not None:

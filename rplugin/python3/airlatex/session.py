@@ -20,11 +20,11 @@ class AirLatexSession:
 
   def __init__(self, domain, servername, sidebar, comments, nvim, https=True):
     """
-        Manages the Session to the server:
-        - tries to login with credentials & checks wether these suffice as authentication
-        - queries the project list
-        - initializes AirLatexProject objects
-        """
+      Manages the Session to the server:
+      - tries to login with credentials & checks wether these suffice as authentication
+      - queries the project list
+      - initializes AirLatexProject objects
+    """
 
     self.sidebar = sidebar
     self.comments = comments
@@ -47,16 +47,11 @@ class AirLatexSession:
   # helpers #
   # ------- #
 
-  async def _makeStatusAnimation(self, str):
-    """
-        Performs a loading animation.
-        """
-    i = 0
-    while True:
-      s = " .." if i % 3 == 0 else ". ." if i % 3 == 1 else ".. "
-      await self.sidebar.updateStatus(s + " " + str + " " + s)
-      await sleep(0.1)
-      i += 1
+  @property
+  def cookies(self):
+    return "; ".join(
+        name + "=" + value
+        for name, value in self.httpHandler.cookies.get_dict().items())
 
   async def _getWebSocketURL(self):
     """
@@ -102,7 +97,7 @@ class AirLatexSession:
 
       if not self.username.startswith("cookies:"):
 
-        anim_status = create_task(self._makeStatusAnimation("Login"))
+        anim_status = create_task(self.sidebar.animate("Login"))
 
         # get csrf token
         loginpage_request = lambda: self.httpHandler.get(self.url + "/login")
@@ -151,7 +146,7 @@ class AirLatexSession:
               "Found Cookie for domain '%s' named '%s'" % (name, value))
           self.httpHandler.cookies[name] = value
 
-      anim_status = create_task(self._makeStatusAnimation("Connecting"))
+      anim_status = create_task(self.sidebar.animate("Connecting"))
       # check if cookie found by testing if projects redirects to login page
       try:
         get = lambda: self.httpHandler.get(
@@ -186,7 +181,7 @@ class AirLatexSession:
         """
     self.log.debug("updateProjectList()")
     if self.authenticated:
-      anim_status = create_task(self._makeStatusAnimation("Loading Projects"))
+      anim_status = create_task(self.sidebar.animate("Loading Projects"))
 
       get = lambda: self.httpHandler.get(
           self.url + "/project", allow_redirects=False)
@@ -221,20 +216,6 @@ class AirLatexSession:
         self.log.debug(data)
 
         self.projectList = data["projects"]
-
-        for project in self.projectList:
-          owner = project["owner"]
-          if "firstName" in owner:
-            owner["first_name"] = owner.pop("firstName")
-          if "lastName" in owner:
-            owner["last_name"] = owner.pop("lastName")
-
-          last_updated_by = project["lastUpdatedBy"]
-          if "firstName" in last_updated_by:
-            last_updated_by["first_name"] = last_updated_by.pop("firstName")
-          if "lastName" in last_updated_by:
-            last_updated_by["last_name"] = last_updated_by.pop("lastName")
-
         self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
         create_task(self.sidebar.triggerRefresh())
       except Exception as e:
@@ -247,12 +228,6 @@ class AirLatexSession:
                   % (str(e), f.name)))
         create_task(self.sidebar.triggerRefresh())
 
-  @property
-  def cookies(self):
-    return "; ".join(
-        name + "=" + value
-        for name, value in self.httpHandler.cookies.get_dict().items())
-
   async def connectProject(self, project):
     """
         Initializing connection to a project.
@@ -262,7 +237,7 @@ class AirLatexSession:
       return
 
     anim_status = create_task(
-        self._makeStatusAnimation("Connecting to Project"))
+        self.sidebar.animate("Connecting to Project"))
 
     get = lambda: self.httpHandler.get(
         f"{self.url}/project/{project['id']}", allow_redirects=False)
@@ -272,8 +247,6 @@ class AirLatexSession:
         re.search('<meta\s[^>]*name="ol-csrfToken"[^>]*>',
                   projectPage.text)[0])[1]
 
-    # start connection
-    anim_status.cancel()
     # Side bar set command in document
     airlatexproject = AirLatexProject(
         await self._getWebSocketURL(),
@@ -283,4 +256,7 @@ class AirLatexSession:
         cookie=self.cookies,
         wait_for=self.wait_for,
         validate_cert=self.httpHandler.verify)
+    # start connection
+    anim_status.cancel()
+    create_task(self.sidebar.updateStatus("Connected"))
     create_task(airlatexproject.start())

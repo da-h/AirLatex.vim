@@ -8,6 +8,8 @@ from logging import getLogger
 
 from intervaltree import Interval, IntervalTree
 
+import hashlib
+
 if "allBuffers" not in globals():
   allBuffers = {}
 
@@ -34,6 +36,10 @@ class DocumentBuffer:
     self.buffer_event = asyncio.Event()
     self.thread_intervals = IntervalTree()
     self.cursors = {}
+
+  def command(self, cmd):
+    for c in cmd.split("\n"):
+      self.nvim.command(c.strip())
 
   @staticmethod
   def getName(path):
@@ -67,53 +73,72 @@ class DocumentBuffer:
   def ext(self):
     return DocumentBuffer.getExt(self.document)
 
+  @property
+  def augroup(self):
+    "Need a file unique string. Could use docid I guess."
+    return hashlib.md5(self.name.encode('utf-8')).hexdigest()
+
+  def deactivate(self):
+    del DocumentBuffer.allBuffers[self.buffer]
+    def callback():
+      buffer = self.nvim.current.buffer
+      self.buffer.api.clear_namespace(self.highlight, 0, -1)
+      self.buffer.api.clear_namespace(self.highlight2, 0, -1)
+      self.buffer.options.syntax = False
+      self.nvim.command(f"autocmd! {self.augroup}")
+      # Changing the name breaks vimtex.
+      try:
+        self.buffer.name = f"Offline {self.augroup}"
+      except:
+        pass
+      self.thread_intervals.clear()
+    self.nvim.async_call(callback)
+
   def initDocumentBuffer(self):
     self.log.debug_gui("initDocumentBuffer")
 
     # Creating new Buffer
-    self.nvim.command('wincmd w')
-    self.nvim.command('enew')
-    self.nvim.command('file ' + self.name)
+    self.nvim.command(f"""
+      wincmd w
+      enew
+      file {self.name}
+    """)
+
     self.buffer = self.nvim.current.buffer
     DocumentBuffer.allBuffers[self.buffer] = self
 
     # Buffer Settings
-    self.nvim.command("syntax on")
-    self.nvim.command('setlocal noswapfile')
-    self.nvim.command('setlocal buftype=nofile')
-    self.nvim.command("set filetype=" + self.ext)
+    self.nvim.command(f"""
+      syntax on
+      setlocal noswapfile
+      setlocal buftype=nofile
+      set filetype={self.ext}
+    """)
 
-    # ??? Returning normal function to these buttons
-    # self.nvim.command("nmap <silent> <up> <up>")
-    # self.nvim.command("nmap <silent> <down> <down>")
-    # self.nvim.command("nmap <silent> <enter> <enter>")
-    # self.nvim.command("set updatetime=500")
-    # self.nvim.command("autocmd CursorMoved,CursorMovedI * :call AirLatex_update_pos()")
-    # self.nvim.command("autocmd CursorHold,CursorHoldI * :call AirLatex_update_pos()")
-    self.nvim.command("cmap <buffer> w call AirLatex_Compile()<CR>")
-    self.nvim.command("au CursorMoved <buffer> call AirLatex_WriteBuffer()")
-    self.nvim.command("au CursorMovedI <buffer> call AirLatex_WriteBuffer()")
-    self.nvim.command("au CursorMoved <buffer> call AirLatex_ShowComments()")
-    self.nvim.command("command! -buffer -nargs=0 W call AirLatex_WriteBuffer()")
+    # Autogroups
+    self.log.debug(f"Au {self.augroup}")
+    self.nvim.command(f"""
+    augroup {self.augroup}
+      au CursorMoved <buffer> call AirLatex_WriteBuffer()
+      au CursorMovedI <buffer> call AirLatex_WriteBuffer()
+      au CursorMoved <buffer> call AirLatex_ShowComments()
+      command! -buffer -nargs=0 W call AirLatex_WriteBuffer()
+    augroup END
+    """)
 
-    self.nvim.command("vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>")
+    # Buffer bindings
+    self.nvim.command(f"""
+      vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>
+      cmap <buffer> w call AirLatex_Compile()<CR>
+    """)
 
     # Comment formatting
-    self.nvim.command(f"hi PendingCommentGroup ctermbg=190")
-    self.nvim.command(f"hi AirLatexCommentGroup ctermbg=58")
-    self.nvim.command(f"hi AirLatexDoubleCommentGroup ctermbg=94")
-    self.nvim.command(f"hi CursorGroup ctermbg=18")
-
-  def write(self, lines):
-
-    def writeLines(buffer, lines):
-      buffer[0] = lines[0]
-      for l in lines[1:]:
-        buffer.append(l)
-      self.saved_buffer = buffer[:]
-      self.buffer_event.set()
-
-    self.nvim.async_call(writeLines, self.buffer, lines)
+    self.nvim.command(f"""
+      hi PendingCommentGroup ctermbg=190
+      hi AirLatexCommentGroup ctermbg=58
+      hi AirLatexDoubleCommentGroup ctermbg=94
+      hi CursorGroup ctermbg=18
+    """)
 
   def compile(self):
     create_task(self.project_handler.compile())
@@ -254,6 +279,22 @@ class DocumentBuffer:
     await self.buffer_event.wait()
     self.nvim.async_call(highlight_callback)
 
+  def showComments(self, comment_buffer):
+    self.log.debug(f"Show comments {self.augroup}")
+    if comment_buffer.drafting or comment_buffer.creation:
+      return
+    self.buffer.api.clear_namespace(self.pending_selection, 0, -1)
+    self.comment_selection = IntervalTree()
+    cursor = self.nvim.current.window.cursor
+    self.log.debug(f"cursor {cursor}")
+    cursor_offset = self.getPosition(cursor[0] - 1, cursor[1])
+    threads = self.thread_intervals[cursor_offset]
+    if not threads:
+      comment_buffer.buffer[:] = []
+      return
+    self.log.debug(f"found threads {threads}")
+    comment_buffer.render(self.project_handler, threads)
+
   def clearRemoteCursor(self, remote_id):
     if remote_id in self.cursors:
       highlight = self.cursors[remote_id]
@@ -288,23 +329,6 @@ class DocumentBuffer:
 
     self.nvim.async_call(handle_cursor, cursor)
 
-  def showComments(self, comment_buffer):
-    if comment_buffer.drafting:
-      return
-    if comment_buffer.creation:
-      return
-    self.buffer.api.clear_namespace(self.pending_selection, 0, -1)
-    self.comment_selection = IntervalTree()
-    cursor = self.nvim.current.window.cursor
-    self.log.debug(f"cursor {cursor}")
-    cursor_offset = self.getPosition(cursor[0] - 1, cursor[1])
-    threads = self.thread_intervals[cursor_offset]
-    if not threads:
-      comment_buffer.buffer[:] = []
-      return
-    self.log.debug(f"found threads {threads}")
-    comment_buffer.render(self.project_handler, threads)
-
   def cummulativePosition(self):
     # TODO: make a cached linked list that updates with changes
     pos = [0]
@@ -326,6 +350,17 @@ class DocumentBuffer:
         break
       char_count += line_length
     return char_count, start_line, start_col, end_line, end_col
+
+  def write(self, lines):
+
+    def writeLines(buffer, lines):
+      buffer[0] = lines[0]
+      for l in lines[1:]:
+        buffer.append(l)
+      self.saved_buffer = buffer[:]
+      self.buffer_event.set()
+
+    self.nvim.async_call(writeLines, self.buffer, lines)
 
   def writeBuffer(self):
     self.log.debug("writeBuffer: calculating changes to send")

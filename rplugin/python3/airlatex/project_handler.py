@@ -62,7 +62,6 @@ class AirLatexProject:
     self.wait_for = wait_for if str(wait_for).isnumeric() else None
     self.validate_cert = validate_cert
 
-    self.ioloop = IOLoop()
     self.command_counter = count(1)
     self.ws = None
     self.requests = {}
@@ -76,9 +75,7 @@ class AirLatexProject:
     self.log.debug("Starting connection to server.")
     # start tornado event loop & related callbacks
     IOLoop.current().spawn_callback(self.sendOps_flush)
-    PeriodicCallback(self.keep_alive, 20000).start()
     await self.connect()
-    await self.ioloop.start()
 
   async def send(self, message_type, message=None, event=None):
     if message_type == "keep_alive":
@@ -261,7 +258,7 @@ class AirLatexProject:
 
   # wrapper for the ioloop
   async def sendOps(self, document, content_hash, ops=[], track=False):
-    await self.ops_queue.put((document, content_hash, ops, track))
+    await self.ops_queue.put((document, content_hash, ops, track, False))
 
   # actual sending of ops
   async def _sendOps(self, document, content_hash, ops=[], track=False):
@@ -329,32 +326,28 @@ class AirLatexProject:
   # sendOps whenever events appear in queue
   # (is only called in constructor)
   async def sendOps_flush(self):
-
-    # direct sending
-    # async for document, ops in self.ops_queue:
-    #     await self._sendOps(document, ops)
-
-    # collects ops and sends them in a batch, server is ready
-    while True:
-      all_ops = {}
-
-      # await first element
-      document, content_hash, ops, track = await self.ops_queue.get()
+    async def dequeue(all_ops):
+      document, content_hash, ops, track, close = await self.ops_queue.get()
+      if close:
+        return False
       self.log.debug(f"Got Op {document, content_hash, ops}")
       if document["_id"] not in all_ops:
         all_ops[document["_id"]] = ops
       else:
         all_ops[document["_id"]] += ops
+      return True
 
+    # collects ops and sends them in a batch, server is ready
+    while self.project["connected"]:
+      all_ops = {}
+      # await first element
+      if not await dequeue(all_ops):
+        return
       # get also all other elements that are currently in queue
       num = self.ops_queue.qsize()
       for i in range(num):
-        document, content_hash, ops, track = await self.ops_queue.get()
-        self.log.debug(f"Got Op {document, content_hash, ops}")
-        if document["_id"] not in all_ops:
-          all_ops[document["_id"]] = ops
-        else:
-          all_ops[document["_id"]] += ops
+        if not await dequeue(all_ops):
+          return
 
       # apply all ops one after another
       for doc_id, ops in all_ops.items():
@@ -383,13 +376,21 @@ class AirLatexProject:
         })
 
   async def disconnect(self, msg="Disconnected."):
-    # del self.project["handler"]
     self.log.debug("Connection Closed. Reason:" + msg)
     self.project["msg"] = msg
     self.project["open"] = False
     self.project["connected"] = False
+    del self.project["await"]
+    await self.ops_queue.put((None, None, None, None, True))
+    doc = None
+    for doc in self.documents.values():
+      doc["buffer"].deactivate()
+    if msg == "Disconnected.":
+      if doc and len(doc["buffer"].allBuffers) > 0:
+        create_task(self.sidebar.updateStatus("Connected"))
+      else:
+        create_task(self.sidebar.updateStatus("Online"))
     await self.sidebar.triggerRefresh()
-    # await self.ioloop.stop()
 
   async def connect(self):
     try:
@@ -423,7 +424,7 @@ class AirLatexProject:
   async def run(self):
     try:
       self.comments = await self.getComments()
-      while True:
+      while self.project["connected"]:
         msg = await self.ws.read_message()
 
         if msg is None:

@@ -25,15 +25,10 @@ class CommentBuffer:
     self.threads = {}
     self.index = 0
 
-    self.symbol_open = self.nvim.eval("g:AirLatexArrowOpen")
-    self.symbol_closed = self.nvim.eval("g:AirLatexArrowClosed")
-    self.showArchived = self.nvim.eval("g:AirLatexShowArchived")
-    self.status = "Initializing"
     self.creation = ""
     self.drafting = False
 
     self.uilock = Lock()
-
     self.comment_id = 1
 
   # ----------- #
@@ -120,9 +115,6 @@ class CommentBuffer:
     self.nvim.command('setlocal cursorline')
     self.nvim.command('setlocal filetype=airlatexcomment')
 
-    # self.nvim.command("nnoremap <buffer> q<C-n> :call AirLatex_NextComment()<enter>")
-    # self.nvim.command("cnoremap <buffer> w<CR> :call AirLatex_NextComment()<enter>")
-
     self.nvim.command(
         "nnoremap <buffer> <C-n> :call AirLatex_NextComment()<enter>")
     self.nvim.command(
@@ -137,17 +129,6 @@ class CommentBuffer:
         "nnoremap <buffer> ZZ :call AirLatex_FinishDraft(1)<enter>")
     self.nvim.command(
         "nnoremap <buffer> ZQ :call AirLatex_FinishDraft(0)<enter>")
-
-    # Register Mappings
-    # self.nvim.command("nnoremap <silent> <buffer> q :q <enter>")
-    # self.nvim.command("nnoremap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-    # self.nvim.command("nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-    # self.nvim.command("nnoremap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-    # self.nvim.command("nnoremap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>")
-    # self.nvim.command("nnoremap <silent> <buffer> <enter> :call AirLatex_ProjectEnter() <enter>")
-    # self.nvim.command("autocmd VimLeavePre <buffer> :call AirLatex_Close()")
-    # self.nvim.command("nnoremap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
-    # self.nvim.command("nnoremap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
 
   @pynvimCatchException
   def render(self, project, threads):
@@ -242,13 +223,11 @@ class CommentBuffer:
       # Move back (triggers au on document)
       # So set debounce prior ro creating window
       current_win_id = self.nvim.api.get_current_win()
-      self.nvim.command('let splitSize = g:AirLatexWinSize')
-      self.nvim.command(
-          f"""
-                exec 'vertical rightbelow sb{self.buffer.number}'
-                exec 'buffer {self.buffer.number}'
-                exec 'vertical rightbelow resize ' . splitSize
-            """)
+      self.nvim.command(f"""
+        vertical rightbelow sb{self.buffer.number}
+        buffer {self.buffer.number}
+        exec 'vertical rightbelow resize ' . g:AirLatexWinSize
+      """)
       if not change:
         self.nvim.api.set_current_win(current_win_id)
 

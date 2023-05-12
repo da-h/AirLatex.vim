@@ -209,6 +209,7 @@ class AirLatex:
 
   @pynvim.function('AirLatex_ShowComments')
   def showComments(self, args):
+    self.log.debug("OK then")
     buffer = self.nvim.current.buffer
     if buffer in DocumentBuffer.allBuffers:
       DocumentBuffer.allBuffers[buffer].showComments(self.comments)

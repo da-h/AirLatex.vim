@@ -52,12 +52,21 @@ class SideBar:
     buffer_id = self.buffer.number
     return self.nvim.call('bufwinnr', buffer_id) != -1
 
+  async def animate(self, msg):
+    """
+    Performs a loading animation.
+    """
+    i = 0
+    while True:
+      s = " .." if i % 3 == 0 else ". ." if i % 3 == 1 else ".. "
+      await self.updateStatus(f"{s} {msg} {s}")
+      await sleep(0.1)
+      i += 1
+
   @pynvimCatchException
   def updateStatusLine(self, releaseLock=True):
     if hasattr(self, 'statusline') and len(self.statusline):
-      # self.nvim.command('setlocal ma')
       self.statusline[0] = self.statusline[0][:15] + self.status
-      # self.nvim.command('setlocal noma')
       if releaseLock and self.uilock.locked():
         self.uilock.release()
 
@@ -77,65 +86,58 @@ class SideBar:
     create_task(self.uilock.acquire())
     self._listProjects(False)
 
+  def command(self, cmd):
+    for c in cmd.split("\n"):
+      self.log.debug(c)
+      self.nvim.command(c.strip())
+
   @pynvimCatchException
   def initSidebarBuffer(self):
     self.log.debug_gui("initSidebarBuffer()")
 
-    self.nvim.command(
-        'let splitLocation = g:AirLatexWinPos ==# "left" ? "topleft " : "botright "'
-    )
-    self.nvim.command('let splitSize = g:AirLatexWinSize')
-
-    self.nvim.command(
-        """
-            silent! exec splitLocation . 'vertical ' . splitSize . ' new'
-            silent! exec "buffer " . "AirLatex"
-        """)
+    self.command(
+    """
+      let splitSize = g:AirLatexWinSize
+      let splitLocation = g:AirLatexWinPos ==# "left" ? "topleft " : "botright "
+      exec splitLocation . 'vertical ' . splitSize . ' new'
+      buffer "AirLatex"
+    """)
 
     self.buffer = self.nvim.current.buffer
 
-    self.nvim.command('file AirLatex')
-    self.nvim.command('setlocal winfixwidth')
-
     # throwaway buffer options (thanks NERDTree)
-    self.nvim.command('setlocal noswapfile')
-    self.nvim.command('setlocal buftype=nofile')
-    self.nvim.command('setlocal bufhidden=hide')
-    self.nvim.command('setlocal wrap')
-    self.nvim.command('setlocal foldcolumn=0')
-    self.nvim.command('setlocal foldmethod=manual')
-    self.nvim.command('setlocal nofoldenable')
-    self.nvim.command('setlocal nobuflisted')
-    self.nvim.command('setlocal nospell')
-    self.nvim.command('setlocal nonu')
-    self.nvim.command('setlocal nornu')
-    self.nvim.command('iabc <buffer>')
-    self.nvim.command('setlocal cursorline')
-    self.nvim.command('setlocal filetype=airlatex')
+    self.command("""
+      file AirLatex
+      setlocal winfixwidth
+      setlocal noswapfile
+      setlocal buftype=nofile
+      setlocal bufhidden=hide
+      setlocal wrap
+      setlocal foldcolumn=0
+      setlocal foldmethod=manual
+      setlocal nofoldenable
+      setlocal nobuflisted
+      setlocal nospell
+      setlocal nonu
+      setlocal nornu
+      iabc <buffer>
+      setlocal cursorline
+      setlocal filetype=airlatex
+    """)
     # self.nvim.command('setlocal nomodifiable')
 
     # Register Mappings
-    self.nvim.command("nnoremap <silent> <buffer> q :q <enter>")
-    self.nvim.command(
-        "nnoremap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>"
-    )
-    self.nvim.command(
-        "nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>"
-    )
-    self.nvim.command(
-        "nnoremap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>"
-    )
-    self.nvim.command(
-        "nnoremap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>"
-    )
-    self.nvim.command(
-        "nnoremap <silent> <buffer> <enter> :call AirLatex_ProjectEnter() <enter>"
-    )
-    self.nvim.command("autocmd VimLeavePre <buffer> :call AirLatex_Close()")
-    self.nvim.command(
-        "nnoremap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>")
-    self.nvim.command(
-        "nnoremap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>")
+    self.command("""
+      nnoremap <silent> <buffer> q :q <enter>
+      nnoremap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
+      nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
+      nnoremap <silent> <buffer> <down> <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
+      nnoremap <silent> <buffer> j <down> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
+      nnoremap <silent> <buffer> <enter> :call AirLatex_ProjectEnter() <enter>
+      nnoremap <silent> <buffer> d :call AirLatex_ProjectLeave() <enter>
+      nnoremap <silent> <buffer> D :call AirLatex_ProjectLeave() <enter>
+      autocmd VimLeavePre <buffer> :call AirLatex_Close()
+    """)
 
   @pynvimCatchException
   def listProjects(self, overwrite=False):
@@ -155,12 +157,9 @@ class SideBar:
       self.status = "Starting Session"
 
     # Display Header
-    if not overwrite or True:
-      self.buffer_write_i = 0
-      self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
-      self.bufferappend(" ")
-    else:
-      self.buffer_write_i = 4
+    self.buffer_write_i = 0
+    self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
+    self.bufferappend(" ")
 
     # Display all Projects
     if projectList is not None:
@@ -186,12 +185,11 @@ class SideBar:
 
         # cursor-over info
         if self.cursorAt([project]):
-          if "open" in project and project["open"]:
+          if project.get("open"):
             self.bufferappend("   -----------------")
-        if "msg" in project and (
-            "connected" in project and project["connected"] or
-            self.cursorAt([project]) or
-            "msg" in project and project["msg"].startswith("Error")):
+        if "msg" in project and (project.get("connected") or
+            (self.cursorAt([project]) and project.get("msg",
+                                                      "").startswith("Error"))):
           if project["msg"].startswith("Error: "):
             self.bufferappend("   error: " + project['msg'][7:])
           else:
@@ -206,15 +204,15 @@ class SideBar:
             self.bufferappend("   source: " + project['source'])
           if "owner" in project:
             self.bufferappend(
-                "   owner: " + project['owner'].get('first_name', '') + (
-                    " " + project['owner'].get('last_name') if "last_name" in
+                "   owner: " + project['owner'].get('firstName', '') + (
+                    " " + project['owner'].get('lastName') if "lastName" in
                     project["owner"] else ""))
           if "lastUpdated" in project:
             self.bufferappend("   last change: " + project['lastUpdated'])
           if not (project.get("lastUpdatedBy") == None):
             self.bufferappend(
-                "    -> by: " + project['lastUpdatedBy']['first_name'] + " " +
-                " " + project['lastUpdatedBy']['last_name'])
+                "    -> by: " + project['lastUpdatedBy']['firstName'] + " " +
+                " " + project['lastUpdatedBy']['lastName'])
 
     # Info
     self.bufferappend("  ")
@@ -229,8 +227,8 @@ class SideBar:
         " Last Update : " + strftime("%H:%M:%S", self.lastUpdate),
         ["lastupdate"])
     self.bufferappend(" Quit All    : enter", ["disconnect"])
-    if not overwrite:
-      self.vimCursorSet(3, 1)
+    # if not overwrite:
+    #   self.vimCursorSet(3, 1)
     del (self.buffer[self.buffer_write_i:len(self.buffer)])
     # self.nvim.command('setlocal noma')
 
@@ -342,9 +340,12 @@ class SideBar:
 
   @pynvimCatchException
   def cursorAction(self, key="enter"):
+    self.log.debug(
+        "cursorAction(%s) on %s")
+
     if not isinstance(self.cursorPos, list):
       return
-    self.log.debug_gui(
+    self.log.debug(
         "cursorAction(%s) on %s" %
         (key, ",".join(str(p) for p in self.cursorPos)))
 
@@ -370,8 +371,11 @@ class SideBar:
           if key == "enter":
             self._toggle(self.cursorPos[-1], "open", default=False)
           elif key == "del":
-            if "connected" in project and project["connected"]:
-              project["handler"].disconnect()
+            if project.get("connected"):
+              def del_hander(*args):
+                if "handler" in project:
+                  del project["handler"]
+              create_task(project["handler"].disconnect()).add_done_callback(del_hander)
           create_task(self.triggerRefresh())
         else:
           create_task(self.airlatex.session.connectProject(project))
