@@ -73,9 +73,9 @@ class SideBar:
   @pynvimCatchException
   def bufferappend(self, arg, pos=[]):
     if self.buffer_write_i >= len(self.buffer):
-      self.buffer.append(arg)
+      self.buffer.append(arg.rstrip())
     else:
-      self.buffer[self.buffer_write_i] = arg
+      self.buffer[self.buffer_write_i] = arg.rstrip()
     self.buffer_write_i += 1
     if self.buffer_write_i == self.cursor[0]:
       self.cursorPos = pos
@@ -158,7 +158,7 @@ class SideBar:
 
     # Display Header
     self.buffer_write_i = 0
-    self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄ " % __version__)
+    self.bufferappend("   ┄┄┄┄┄┄ AirLatex (ver %s) ┄┄┄┄┄┄┄" % __version__)
     self.bufferappend(" ")
 
     # Display all Projects
@@ -178,7 +178,8 @@ class SideBar:
         # list project structure
         if "open" in project and project["open"]:
           self.bufferappend(" " + self.symbol_open + " " + project["name"], pos)
-          self.listProjectStructure(project["rootFolder"][0], pos)
+          self.log.debug(f"{project}")
+          self.listProjectStructure(project.get("rootFolder", [None])[0], pos)
         else:
           self.bufferappend(
               " " + self.symbol_closed + " " + project["name"], pos)
@@ -212,7 +213,7 @@ class SideBar:
           if not (project.get("lastUpdatedBy") == None):
             self.bufferappend(
                 "    -> by: " + project['lastUpdatedBy']['firstName'] + " " +
-                " " + project['lastUpdatedBy']['lastName'])
+                " " + project['lastUpdatedBy'].get('lastName', ''))
 
     # Info
     self.bufferappend("  ")
@@ -238,6 +239,9 @@ class SideBar:
   @pynvimCatchException
   def listProjectStructure(self, rootFolder, pos, indent=0):
     self.log.debug_gui("listProjectStructure()")
+    if not rootFolder:
+      self.bufferappend("Unable to load folders")
+      return
 
     # list folders first
     indentStr = "   " + "  " * indent

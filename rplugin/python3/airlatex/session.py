@@ -14,6 +14,7 @@ from airlatex.project_handler import AirLatexProject
 from airlatex.util import _genTimeStamp
 from http.cookiejar import CookieJar
 from logging import getLogger
+import traceback
 
 
 class AirLatexSession:
@@ -133,6 +134,7 @@ class AirLatexSession:
               return False
         except Exception as e:
           anim_status.cancel()
+          self.log.debug(traceback.format_exc())
           create_task(self.sidebar.updateStatus("Login failed: " + str(e)))
           return False
 
@@ -171,6 +173,7 @@ class AirLatexSession:
           return False
       except Exception as e:
         anim_status.cancel()
+        self.log.debug(traceback.format_exc())
         create_task(self.sidebar.updateStatus("Connection failed: " + str(e)))
     else:
       return False
@@ -188,9 +191,17 @@ class AirLatexSession:
       projectPage = (await self.nvim.loop.run_in_executor(None, get))
       anim_status.cancel()
 
+      legacy = False
       meta = re.search(
           '<meta\s[^>]*name="ol-prefetchedProjectsBlob"[^>]*>',
           projectPage.text) if projectPage.ok else None
+      # Community edition still uses ol-projects
+      if projectPage.ok and meta is None:
+        meta = re.search(
+            '<meta\s[^>]*name="ol-projects"[^>]*>',
+            projectPage.text) if projectPage.ok else None
+        legacy = meta is not None
+
       if not projectPage.ok or meta is None:
         with tempfile.NamedTemporaryFile(delete=False) as f:
           f.write(projectPage.text.encode())
@@ -215,7 +226,19 @@ class AirLatexSession:
         create_task(self.sidebar.updateStatus("Online"))
         self.log.debug(data)
 
-        self.projectList = data["projects"]
+        if legacy:
+          self.log.debug("is legacy")
+          self.projectList = data
+          for project in self.projectList:
+            owner = project["owner"]
+            last_updated_by = project["lastUpdatedBy"]
+            owner["firstName"] = owner.get("first_name", "")
+            owner["lastName"] = owner.get("last_name", "")
+            last_updated_by["firstName"] = last_updated_by.get("first_name", "")
+            last_updated_by["lastName"] = last_updated_by.get("last_name", "")
+        else:
+          self.log.debug("is NOT legacy")
+          self.projectList = data["projects"]
         self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
         create_task(self.sidebar.triggerRefresh())
       except Exception as e:
@@ -226,6 +249,7 @@ class AirLatexSession:
               self.sidebar.updateStatus(
                   "Could not retrieve project list: %s. You can check the response page under: %s "
                   % (str(e), f.name)))
+        self.log.debug(traceback.format_exc())
         create_task(self.sidebar.triggerRefresh())
 
   async def connectProject(self, project):

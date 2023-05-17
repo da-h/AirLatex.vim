@@ -30,6 +30,7 @@ class CommentBuffer:
 
     self.uilock = Lock()
     self.comment_id = 1
+    self.invalid = False
 
   # ----------- #
   # AsyncIO API #
@@ -40,6 +41,11 @@ class CommentBuffer:
     self.log.debug_gui("trying to acquire (in trigger)")
     await self.uilock.acquire()
     self.nvim.async_call(self._render)
+
+  async def markInvalid(self):
+    self.log.debug("invalid")
+    self.invalid = True
+    await self.triggerRefresh()
 
   async def updateStatus(self, msg):
     self.log.debug_gui("trying to acquire (in update)")
@@ -66,9 +72,9 @@ class CommentBuffer:
   @pynvimCatchException
   def bufferappend(self, arg, pos=[]):
     if self.buffer_write_i >= len(self.buffer):
-      self.buffer.append(arg)
+      self.buffer.append(arg.rstrip())
     else:
-      self.buffer[self.buffer_write_i] = arg
+      self.buffer[self.buffer_write_i] = arg.rstrip()
     self.buffer_write_i += 1
     if self.buffer_write_i == self.cursor[0]:
       self.cursorPos = pos
@@ -154,6 +160,10 @@ class CommentBuffer:
   def _render(self):
     self.log.debug(f"in render {self.threads, self.index}")
     self.buffer[:] = []
+
+    if self.invalid:
+      self.buffer[0] = "Unable to communicate with comments server."
+      return
 
     if not self.threads:
       return
@@ -260,6 +270,8 @@ class CommentBuffer:
 
   @pynvimCatchException
   def finishDraft(self, submit):
+    if self.invalid:
+      return
     if self.drafting:
       self.drafting = False
       if not self.creation:
@@ -292,6 +304,8 @@ class CommentBuffer:
 
   @pynvimCatchException
   def prepCommentCreation(self):
+    if self.invalid:
+      return
     self.previous_open = self.visible
     if self.visible:
       window = self.nvim.call('bufwinnr', self.buffer.number)
@@ -304,6 +318,8 @@ class CommentBuffer:
 
   @pynvimCatchException
   def prepCommentRespond(self):
+    if self.invalid:
+      return
     if not self.drafting:
       self.buffer[:] = []
       self.buffer[0] = ""
@@ -318,6 +334,8 @@ class CommentBuffer:
 
   @pynvimCatchException
   def changeComment(self, change):
+    if self.invalid:
+      return
     self.index = (self.index + change) % len(self.threads)
     create_task(self.triggerRefresh())
 
@@ -330,6 +348,8 @@ class CommentBuffer:
 
   @pynvimCatchException
   def cursorAction(self, key="enter"):
+    if self.invalid:
+      return
     if key == "enter":
       resolve_pattern = re.compile(r'resolve\s+✓✓$')
       if resolve_pattern.search(self.nvim.current.line):

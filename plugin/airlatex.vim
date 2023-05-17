@@ -86,9 +86,19 @@ if exists('*airline#parts#define_function')
         return ''
       endif
     endfunction
+    function! AirLatexCheckOfflineBuffer()
+      let buffer_name = expand('%:t')
+      if buffer_name =~ 'Offline'
+        return "Offline"
+      else
+        return ""
+      endif
+    endfunction
     " Define a new Airline part using the created function
     call airline#parts#define_function('air_latex', 'AirLatexAirlineStatus')
+    call airline#parts#define_function('air_latex_error', 'AirLatexCheckOfflineBuffer')
     let g:airline_section_a = airline#section#create(['mode', 'air_latex'])
+    let g:airline_section_error = airline#section#create(['air_latex_error'])
     call airline#update_statusline()
 endif
 

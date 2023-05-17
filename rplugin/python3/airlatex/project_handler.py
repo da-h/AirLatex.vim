@@ -14,6 +14,7 @@ from asyncio import Queue, wait_for, TimeoutError
 from logging import getLogger
 from asyncio import sleep, create_task
 import requests
+import traceback
 
 from datetime import datetime
 
@@ -146,7 +147,8 @@ class AirLatexProject:
       assert response.status_code == 200, f"Bad status code {response.status_code}"
       self.log.debug("Synced.")
     except Exception as e:
-      self.log.debug("\nCompilation response content:")
+      self.log.debug(traceback.format_exc())
+      self.log.debug("\nError in sync:")
       self.log.debug(f"{response.content}\n---\n{e}")
 
   async def compile(self):
@@ -175,6 +177,7 @@ class AirLatexProject:
         raise Exception("No success in compiling. Something failed.")
       logger.debug("Compiled.")
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       logger.debug("\nCompilation response content:")
       logger.debug(f"{response.content}\n---\n{e}")
 
@@ -196,6 +199,7 @@ class AirLatexProject:
       # We'll get a websocket confirmation, and handle it from there.
       # Nothing else to do
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       logger.debug("\n {state} response content:")
       logger.debug(f"{response.content}\n---\n{e}")
       if resolve_state is not None:
@@ -257,8 +261,11 @@ class AirLatexProject:
       logger.debug("Got comments")
       return comments
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       logger.debug("\nComments response content:")
       logger.debug(f"{response.content}\n---\n{e}")
+    create_task(self.session.comments.markInvalid())
+    return None
 
   async def clearRemoteCursor(self, session_id):
     for document in self.documents:
@@ -387,6 +394,7 @@ class AirLatexProject:
           document = self.documents[doc_id]
           await self._sendOps(*payload)
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
       await self.disconnect(
           f"Op Failed: {e}")
@@ -436,18 +444,6 @@ class AirLatexProject:
       await self.sidebarMsg("Connecting Websocket.")
       self.project["connected"] = True
       self.log.debug("Initializing websocket connection to " + self.url)
-      if "GCLB=" not in self.cookie:
-        request = HTTPRequest(
-            self.url,
-            headers={'Cookie': self.cookie},
-            validate_cert=self.validate_cert)
-        self.ws = await websocket_connect(request)
-        # Should set the GCLB value
-        for set_cookie_header in self.ws.headers.get_list('Set-Cookie'):
-          cookie = SimpleCookie(set_cookie_header)
-          for key, morsel in cookie.items():
-            self.session.httpHandler.cookies.set(key, morsel.value)
-        self.cookie = self.session.cookies,
       request = HTTPRequest(
           self.url,
           headers={'Cookie': self.cookie},
@@ -455,6 +451,7 @@ class AirLatexProject:
       self.ws = await websocket_connect(request)
 
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       await self.sidebarMsg("Connection Error: " + str(e))
     else:
       await self.sidebarMsg("Connected.")
@@ -467,6 +464,7 @@ class AirLatexProject:
         msg = await self.ws.read_message()
 
         if msg is None:
+          self.log.debug("No msg")
           break
         self.log.debug("Raw server answer: " + msg)
 
@@ -546,6 +544,9 @@ class AirLatexProject:
           # be very annoying
           elif data["name"] in ("resolve-thread", "new-comment", "edit-message",
                                 "delete-message", "reopen-thread"):
+            if comments == None:
+              create_task(self.session.comments.markInvalid())
+              continue
             self.log.debug(data)
             if data["name"] == "new-comment":
               thread = data["args"][0]
@@ -580,8 +581,8 @@ class AirLatexProject:
           # joinProject => server lists project information
           if cmd == "joinProject":
             project_info = data[1]
-            if self.log.level == DEBUG:
-              self.log.debug(json.dumps(project_info))
+            self.log.debug("Joined")
+            self.log.debug(json.dumps(project_info))
             self.project.update(project_info)
             self.project["open"] = True
             await self.send("cmd", {"name": "clientTracking.getConnectedUsers"})
@@ -658,6 +659,7 @@ class AirLatexProject:
     except (gen.Return, StopIteration):
       raise
     except Exception as e:
+      self.log.debug(traceback.format_exc())
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
       await self.disconnect(
           f"WS loop Failed: {e}")
