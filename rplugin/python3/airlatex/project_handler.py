@@ -560,13 +560,10 @@ class AirLatexProject:
           # be very annoying
           elif data["name"] in ("resolve-thread", "new-comment", "edit-message",
                                 "delete-message", "reopen-thread"):
-<<<<<<< HEAD
-=======
             if comments == None:
               create_task(self.session.comments.markInvalid())
               continue
             self.log.debug(data)
->>>>>>> cemel/master
             if data["name"] == "new-comment":
               thread = data["args"][0]
               if thread in self.pending_comments:
