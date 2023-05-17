@@ -27,7 +27,7 @@ class CustomLogRecord(logging.LogRecord):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.filename = self.filename.split(".")[0]
-    self.origin = f"{self.filename} / {self.funcName} #{self.lineno:<4}"
+    self.origin = f"{time.time()} | {self.filename} / {self.funcName} #{self.lineno:<4}"
 
 
 def init_logger():

@@ -213,11 +213,11 @@ class AirLatex:
     if buffer in DocumentBuffer.allBuffers:
       DocumentBuffer.allBuffers[buffer].writeBuffer()
 
-  @pynvim.function('AirLatex_ShowComments')
-  def showComments(self, args):
+  @pynvim.function('AirLatex_MoveCursor', sync=True)
+  def moveCursor(self, args):
     buffer = self.nvim.current.buffer
     if buffer in DocumentBuffer.allBuffers:
-      DocumentBuffer.allBuffers[buffer].showComments(self.comments)
+      DocumentBuffer.allBuffers[buffer].writeBuffer(self.comments)
 
   @pynvim.function('AirLatex_ChangeCommentPosition')
   def changeCommentPosition(self, args):

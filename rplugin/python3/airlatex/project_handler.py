@@ -70,11 +70,11 @@ class AirLatexProject:
     self.log = getLogger("AirLatex")
     self.ops_queue = Queue()
     self.pending_comments = {}
+    self.connection_lock = Lock()
+    self.heartbeat = PeriodicCallback(self.keep_alive, 20000)
 
   async def start(self):
     self.log.debug("Starting connection to server.")
-    # start tornado event loop & related callbacks
-    IOLoop.current().spawn_callback(self.sendOps_flush)
     await self.connect()
 
   async def send(self, message_type, message=None, event=None):
@@ -99,7 +99,7 @@ class AirLatexProject:
     except Exception as e:
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
       await self.disconnect(
-          f"Send failed: {e}")
+          f"Send failed ({type(e).__name__}): {e}")
       raise
 
   async def sidebarMsg(self, msg):
@@ -294,7 +294,6 @@ class AirLatexProject:
     # append new ops to buffer
     document["ops_buffer"] += ops
 
-    self.log.debug(f"{document}")
     # skip if nothing to do
     if len(document["ops_buffer"]) == 0:
       return
@@ -336,6 +335,7 @@ class AirLatexProject:
             "args": [document["_id"], obj_to_send]
         },
         event=event)
+    self.log.debug(f"Sent {document['_id']}.")
 
     # server needs to answer before proceeding
     if self.wait_for is None:
@@ -365,11 +365,10 @@ class AirLatexProject:
         all_ops[document["_id"]] += ops
       return close, (document, content_hash, ops, track)
 
+    self.log.debug("Starting Queue")
     try:
       # collects ops and sends them in a batch, server is ready
-      # Connected might not be set yet.
-      # Fine, because disconnection will explicitly set to false as well.
-      while self.project.get("connected", True):
+      while self.project.get("connected"):
         all_ops = {}
         # await first element
         close, payload = await dequeue(all_ops)
@@ -391,6 +390,7 @@ class AirLatexProject:
       await self.disconnect(
           f"Op Failed: {e}")
       raise
+    self.log.debug("Queue Exited")
 
   async def joinDocument(self, buffer):
 
@@ -414,27 +414,38 @@ class AirLatexProject:
         })
 
   async def disconnect(self, msg="Disconnected."):
+    await self.connection_lock.acquire()
     # Cleanup and inform threads
     self.log.debug("Connection Closed. Reason:" + msg)
     self.project["msg"] = msg
     self.project["open"] = False
     self.project["connected"] = False
-    del self.project["await"]
+    self.heartbeat.stop()
+    if "await" in self.project:
+      del self.project["await"]
+    if self.ws and self.ws.close_code is None:
+      self.ws.close()
     await self.ops_queue.put((None, None, None, None, True))
     doc = None
     for doc in self.documents.values():
-      doc["buffer"].deactivate()
+      create_task(doc["buffer"].deactivate())
     if msg == "Disconnected.":
       if doc and len(doc["buffer"].allBuffers) > 0:
         create_task(self.sidebar.updateStatus("Connected"))
       else:
         create_task(self.sidebar.updateStatus("Online"))
+    self.connection_lock.release()
     await self.sidebar.triggerRefresh()
 
   async def connect(self):
     try:
+      await self.connection_lock.acquire()
       await self.sidebarMsg("Connecting Websocket.")
       self.project["connected"] = True
+      # start tornado event loop & related callbacks
+      IOLoop.current().spawn_callback(self.sendOps_flush)
+      self.heartbeat.start()
+
       self.log.debug("Initializing websocket connection to " + self.url)
       if "GCLB=" not in self.cookie:
         request = HTTPRequest(
@@ -455,15 +466,20 @@ class AirLatexProject:
       self.ws = await websocket_connect(request)
 
     except Exception as e:
-      await self.sidebarMsg("Connection Error: " + str(e))
+      self.connection_lock.release()
+      await self.disconnect(f"Connection Error: {str(e)}")
     else:
+      self.connection_lock.release()
       await self.sidebarMsg("Connected.")
       await self.run()
 
   async def run(self):
     try:
       self.comments = await self.getComments()
-      while self.project["connected"]:
+      self.log.debug("Starting WS loop")
+      # Should always be connected, because this is spawned by run
+      # Which sets connected.
+      while self.project.get("connected"):
         msg = await self.ws.read_message()
 
         if msg is None:
@@ -546,7 +562,6 @@ class AirLatexProject:
           # be very annoying
           elif data["name"] in ("resolve-thread", "new-comment", "edit-message",
                                 "delete-message", "reopen-thread"):
-            self.log.debug(data)
             if data["name"] == "new-comment":
               thread = data["args"][0]
               if thread in self.pending_comments:
@@ -662,6 +677,7 @@ class AirLatexProject:
       await self.disconnect(
           f"WS loop Failed: {e}")
       raise
+    self.log.debug("WS Exited")
 
   async def keep_alive(self):
     await self.send("keep_alive")

@@ -371,10 +371,16 @@ class SideBar:
           if key == "enter":
             self._toggle(self.cursorPos[-1], "open", default=False)
           elif key == "del":
+            # So careful, because project is a shared object. It needs to be
+            # shared such that it is stateful in the sidebar. Connected has
+            # different implications for being True, False and None. We set it
+            # back to None here such that it can properly be set later.
             if project.get("connected"):
               def del_hander(*args):
                 if "handler" in project:
                   del project["handler"]
+                if "connected" in project:
+                  del project["connected"]
               create_task(project["handler"].disconnect()).add_done_callback(del_hander)
           create_task(self.triggerRefresh())
         else:

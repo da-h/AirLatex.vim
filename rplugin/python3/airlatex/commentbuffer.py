@@ -18,7 +18,7 @@ class CommentBuffer:
     self.buffer_write_i = 0
     self.cursorPos = []
     self.log = getLogger("AirLatex")
-    self.log.debug_gui("SideBar initialized.")
+    self.log.debug("Comments initialized.")
     self.cursor = (2, 0)
 
     self.project = None
@@ -36,32 +36,29 @@ class CommentBuffer:
   # ----------- #
 
   async def triggerRefresh(self):
-    self.log.debug("Refresh")
-    self.log.debug_gui("trying to acquire (in trigger)")
+    self.log.debug("call")
     await self.uilock.acquire()
     self.nvim.async_call(self._render)
-
-  async def updateStatus(self, msg):
-    self.log.debug_gui("trying to acquire (in update)")
-    self.status = msg
-    self.log.debug_gui("updateStatus()")
-    self.nvim.async_call(self.updateStatusLine)
 
   # ----------- #
   # GUI Drawing #
   # ----------- #
 
+  def clear(self):
+    self.log.debug("clear")
+    async def lock():
+      await self.uilock.acquire()
+
+    def callback():
+      self.buffer[:] = []
+      self.uilock.release()
+    create_task(lock()).add_done_callback(
+        lambda _: self.nvim.async_call(callback))
+
   @property
   def visible(self):
     buffer_id = self.buffer.number
     return self.nvim.call('bufwinnr', buffer_id) != -1
-
-  @pynvimCatchException
-  def updateStatusLine(self, releaseLock=True):
-    if hasattr(self, 'statusline') and len(self.statusline):
-      # self.nvim.command('setlocal ma')
-      self.statusline[0] = self.statusline[0][:15] + self.status
-      # self.nvim.command('setlocal noma')
 
   @pynvimCatchException
   def bufferappend(self, arg, pos=[]):
@@ -74,13 +71,13 @@ class CommentBuffer:
       self.cursorPos = pos
 
   def initGUI(self):
-    self.log.debug_gui("initGUI()")
+    self.log.debug("initGUI()")
     self.initCommentBuffer()
     self.hide()
 
   @pynvimCatchException
   def initCommentBuffer(self):
-    self.log.debug_gui("initCommentBuffer()")
+    self.log.debug("initCommentBuffer()")
 
     self.nvim.command(
         'let splitLocation = g:AirLatexWinPos ==# "left" ? "botright " : "topleft "'
@@ -162,12 +159,9 @@ class CommentBuffer:
     self.creation = ""
 
     thread = self.project.comments.get(self.threads[self.index])
-    self.log.debug(f"id {self.threads[self.index]}")
-    self.log.debug(f"thread {thread}")
     if not thread:
       self.log.debug(f"all {self.threads}")
       return
-    self.log.debug_gui("Show thread")
     if self.buffer == self.nvim.current.window.buffer:
       self.cursor = self.nvim.current.window.cursor
 
@@ -212,6 +206,7 @@ class CommentBuffer:
       self.bufferappend(f" » resolve{' ' * (size - 5 - 7)}✓✓")
     if self.uilock.locked():
       self.uilock.release()
+    self.log.debug(f"Finished Render")
 
   # ------- #
   # Actions #
