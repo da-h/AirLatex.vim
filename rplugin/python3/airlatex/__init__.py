@@ -145,6 +145,8 @@ class AirLatex:
       end_line += 1
 
     def callback():
+      if self.comments.invalid:
+        return
       buffer = self.nvim.current.buffer
       if buffer in DocumentBuffer.allBuffers:
         document = DocumentBuffer.allBuffers[buffer]

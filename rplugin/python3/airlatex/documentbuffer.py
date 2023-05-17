@@ -264,6 +264,8 @@ class DocumentBuffer:
 
   def highlightComment(self, comments, thread):
     thread_id = thread["id"]
+    if not comments:
+      return
     comments = comments.get(thread_id, {})
     resolved = comments.get("resolved", False)
     if resolved or not comments:
