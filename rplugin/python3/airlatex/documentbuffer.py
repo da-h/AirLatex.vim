@@ -321,7 +321,6 @@ class DocumentBuffer:
     self.nvim.async_call(highlight_callback)
 
   async def showComments(self, cursor, comment_buffer):
-    self.log.debug(f"Show comments {cursor}")
     previous_state = self.comments_active
     self.comments_display = not (comment_buffer.drafting or
                                 comment_buffer.creation)
@@ -332,6 +331,9 @@ class DocumentBuffer:
       self.comment_selection = IntervalTree()
 
     cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
+    self.log.debug(f"Show comments {cursor}, {cursor_offset}, {[t for t in self.thread_intervals]}")
+    self.log.debug(f"Sanity {[self.cumulative_lines[i] for i in range(cursor[0])]} {self.cumulative_lines.arr} ")
+
     threads = self.thread_intervals[cursor_offset]
 
     previously_active = self.comments_active

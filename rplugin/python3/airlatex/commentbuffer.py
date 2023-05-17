@@ -46,13 +46,10 @@ class CommentBuffer:
 
   def clear(self):
     self.log.debug("clear")
-    async def lock():
-      await self.uilock.acquire()
-
     def callback():
       self.buffer[:] = []
       self.uilock.release()
-    create_task(lock()).add_done_callback(
+    create_task(self.uilock.acquire()).add_done_callback(
         lambda _: self.nvim.async_call(callback))
 
   @property

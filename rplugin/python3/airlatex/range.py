@@ -118,43 +118,53 @@ class FenwickTree:
 
 class NaiveAccumulator:
     def __init__(self, size=512):
-        self.size = size
-        self.array = [0] * size
+        self.array = [0]
+        self.last_index = 0
+
+    def initialize(self, array):
+        for i, a in enumerate(array):
+          self.insert(i, a)
 
     def insert(self, index, value):
-        self.array.insert(index - 1, value)
+        self.array.insert(index, value)
+        self.last_index += 1
 
     def get_cumulative_value(self, index):
-        return sum(self.array[:index])
+        return sum(self.array[:min(index, self.last_index)])
 
     def remove(self, index):
+        if index < 0:
+          index = len(self.array) + index
+        print(self.array)
+        self.array[index] = 0
         del self.array[index]
-
-    def resize(self, new_size):
-        if new_size > self.size:
-            self.array += [0] * (new_size - self.size)
-        else:
-            self.array = self.array[:new_size]
-        self.size = new_size
+        self.last_index -= 1
+        print(self.array)
 
     def search(self, v):
-      t = 0
-      for i, c in enumerate(self.array):
-        if t + c >= v:
-          return i, v - t
-        t += c
-      return -1, None
+        t = 0
+        for i, c in enumerate(self.array):
+            if t + c >= v:
+                return i, v - t
+            t += c
+        return -1, None
 
     def position(self, row, col):
-      return self[row] + col
+        return self[row] + col
 
     def __getitem__(self, index):
         return self.get_cumulative_value(index + 1)
 
     def __setitem__(self, index, value):
-        if index >= self.size:
-            self.resize(index * 2)
-        self.array[index] = value
+        if index > self.last_index:
+          self.array.append(value)
+          self.last_index += 1
+        else:
+          self.array[index] = value
 
     def __delitem__(self, index):
         self.remove(index)
+
+    @property
+    def arr(self):
+        return self.array[:self.last_index]
