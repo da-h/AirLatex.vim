@@ -1,3 +1,5 @@
+import sys
+
 import pynvim
 from difflib import SequenceMatcher
 from hashlib import sha1
@@ -20,7 +22,7 @@ if "allBuffers" not in globals():
 class DocumentBuffer:
   allBuffers = allBuffers
 
-  def __init__(self, path, nvim):
+  def __init__(self, path, nvim, new_buffer=True):
     self.comments_active = True
     self.comments_display = True
     self.nonce = f"{time.time()}"
@@ -41,13 +43,26 @@ class DocumentBuffer:
     self.buffer_event = asyncio.Event()
     self.cursors = {}
     self.buffer_mutex = Lock()
-    self.initDocumentBuffer()
     # self.cumulative_lines = FenwickTree()
     self.cumulative_lines = NaiveAccumulator()
+
+    self.initDocumentBuffer(new_buffer)
 
   def command(self, cmd):
     for c in cmd.split("\n"):
       self.nvim.command(c.strip())
+
+  """
+  def cummulativePosition(self):
+    # TODO: make a cached linked list that updates with changes
+    pos = [0]
+    for row in self.buffer[:]:
+      pos.append(pos[-1] + len(row) + 1)
+    return pos
+
+  def getPosition(self, row, col):
+    return self.cummulativePosition()[row] + col
+  """
 
   @staticmethod
   def getName(path):
@@ -59,44 +74,22 @@ class DocumentBuffer:
 
   def buildContentHash(self, cumulative_lines=None):
     # compute sha1-hash of current buffer
-    buffer_cpy = self.buffer[:]
-    current_len = 0
-    for row in buffer_cpy:
-      current_len += len(row) + 1
-    current_len -= 1
-    tohash = ("blob " + str(current_len) + "\x00")
-    for b in buffer_cpy[:-1]:
-      tohash += b + "\n"
-    tohash += buffer_cpy[-1]
-    hash2 = tohash
-    tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
-    sha_ = sha1()
-    sha_.update(tohash.encode())
-
-    sha = sha1()
-    sha.update(hash2.encode())
-    r = sha.hexdigest()
-    self.log.debug(f"{r, sha_.hexdigest()}")
-    return r
-
     if cumulative_lines == None:
       cumulative_lines = self.cumulative_lines
     # compute sha1-hash of current buffer
-    buffer_cpy = self.buffer[:]
+    buffer_cpy = self.saved_buffer[:]
     current_len = 0
     for i, row in enumerate(buffer_cpy):
       self.log.debug(f"{current_len, self.cumulative_lines[i]}")
       current_len += len(row) + 1
     current_len -= 1
     tohash = ("blob " + str(current_len) + "\x00")
-    self.log.debug(f"{current_len, self.cumulative_lines[-1]}")
+    self.log.debug(f"Lengths {current_len, self.cumulative_lines[-1]}")
 
     # current_len = self.cumulative_lines[-1]
     tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
-    self.log.debug(hash2)
-    self.log.debug(tohash)
     sha = sha1()
-    sha.update(hash2.encode())
+    sha.update(tohash.encode())
     return sha.hexdigest()
 
   @property
@@ -110,39 +103,49 @@ class DocumentBuffer:
   @property
   def augroup(self):
     "Need a file unique string. Could use docid I guess."
-    return hashlib.md5((self.name + self.nonce).encode('utf-8')).hexdigest()
+    return "x" + hashlib.md5((self.name + self.nonce).encode('utf-8')).hexdigest()
 
   async def deactivate(self):
     await self.buffer_mutex.acquire()
     if self.buffer not in DocumentBuffer.allBuffers:
-      self.buffer_mutex.release()
       return
     del DocumentBuffer.allBuffers[self.buffer]
     def callback():
+      # Changing the name breaks vimtex.
+      try:
+        self.buffer.name = f"Offline {self.augroup}"
+      except:
+        pass
+
       try:
         buffer = self.nvim.current.buffer
         self.buffer.api.clear_namespace(self.highlight, 0, -1)
         self.buffer.api.clear_namespace(self.highlight2, 0, -1)
-        self.buffer.options.syntax = False
-        self.nvim.command(f"autocmd! {self.augroup}")
-        # Changing the name breaks vimtex.
-        try:
-          self.buffer.name = f"Offline {self.augroup}"
-        except:
-          pass
+        # Turn off syntax to emphasize we are offline
+        # Delete key bindings
+        # Add new keybinding to refresh
+        self.command(f"""
+          buffer {self.buffer.number}
+          autocmd! {self.augroup}
+          set syntax=off
+          buffer {buffer.number}
+        """)
         self.thread_intervals.clear()
       finally:
         self.buffer_mutex.release()
     self.nvim.async_call(callback)
 
-  def initDocumentBuffer(self):
+  def initDocumentBuffer(self, new_buffer):
 
-    # Creating new Buffer
-    self.nvim.command(f"""
-      wincmd w
-      enew
-      file {self.name}
-    """)
+    if new_buffer:
+      self.nvim.command(f"""
+        wincmd w
+        enew
+        file {self.name}
+      """)
+    else:
+      # Reuse the current buffer
+      self.nvim.command(f"file {self.name}")
 
     self.buffer = self.nvim.current.buffer
     DocumentBuffer.allBuffers[self.buffer] = self
@@ -166,8 +169,11 @@ class DocumentBuffer:
     # au CursorMoved <buffer> call AirLatex_ShowComments()
 
     # Buffer bindings
+    pid = self.project_handler.project["id"]
+    did = self.document["_id"]
     self.nvim.command(f"""
       vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>
+      nnoremap <buffer> R :call AirLatex_Refresh('{pid}', '{did}')<enter>
       cmap <buffer> w call AirLatex_GitSync(input('Commit Message: '))<CR>
       " Alternatively
       " cmap <buffer> w call AirLatex_Compile()<CR>
@@ -253,7 +259,7 @@ class DocumentBuffer:
       create_task(
           self.project_handler.sendOps(
               self.document,
-              self.content_hash,
+              self.buildContentHash(),
               ops=[{
                   "c": content,
                   "p": count,
@@ -277,7 +283,8 @@ class DocumentBuffer:
     char_count, start_line, start_col, end_line, end_col = self.getLineInfo(
         start, end)
     # Apply the highlight
-    self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col}")
+    self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col} |"
+                   f"{start, end}")
 
     if start == end:
       start -= 1
@@ -361,6 +368,7 @@ class DocumentBuffer:
       return
 
     def handle_cursor(cursor):
+      tmp_buffer = self.buffer[:]
       if cursor["id"] not in self.cursors:
         highlight = self.nvim.api.create_namespace(cursor["id"])
         self.cursors[cursor["id"]] = highlight
@@ -370,7 +378,10 @@ class DocumentBuffer:
       self.log.debug(
           f"highlighting {cursor} 'CursorGroup', {(cursor['row'], cursor['column'], cursor['column'])}"
       )
-      if len(self.buffer[cursor["row"]]) == cursor["column"]:
+      # Handle case that cursor is at end of line
+      # Guard against being on the last line
+      row = min(cursor["row"], len(tmp_buffer) - 1)
+      if len(tmp_buffer[row]) == cursor["column"]:
         self.buffer.api.add_highlight(
             highlight, 'CursorGroup', cursor["row"],
             max(cursor["column"] - 1, 0), cursor["column"])
@@ -392,21 +403,29 @@ class DocumentBuffer:
         end_line, end_col = i, end - char_count
         break
       char_count += line_length
+    if start_line < 0:
+      start_line = end_line
     return char_count, start_line, start_col, end_line, end_col
 
   def write(self, lines):
 
     def writeLines(buffer, lines):
+      buffer[:] = []
       buffer[0] = lines[0]
-      self.cumulative_lines[0] = 0
-      self.cumulative_lines[1] = len(lines[0]) + 1
+      lengths = [0,] * len(lines)
+      lengths[0] = len(lines[0]) + 1
       for i, l in enumerate(lines[1:]):
         buffer.append(l)
-        self.cumulative_lines[i + 2] = len(l) + 1
+        lengths[i + 1] = len(l) + 1
+      # No new line on last line
+      lengths[-1] -= 1
+      self.cumulative_lines.initialize(lengths)
       self.saved_buffer = buffer[:]
+      self.buffer_mutex.release()
       self.buffer_event.set()
 
-    self.nvim.async_call(writeLines, self.buffer, lines)
+    create_task(self.buffer_mutex.acquire()).add_done_callback(
+        lambda _: self.nvim.async_call(writeLines, self.buffer, lines))
 
   def writeBuffer(self, comments=None):
     self.log.debug("writeBuffer: calculating changes to send")
@@ -451,11 +470,16 @@ class DocumentBuffer:
 
       # inserting a whole row
       elif op[0] == "insert":
+        self.log.debug(f"Insert")
         selection = buffer[op[3]:op[4]]
         s = "\n".join(selection)
         for l in selection[::-1]:
-          self.log.debug(f"FFF {selection, len(l)}")
-          self.cumulative_lines.insert(op[3], len(l) + 1)
+          if op[3] == self.cumulative_lines.last_index:
+            if op[3]:
+              self.cumulative_lines[op[3] - 1] += 1
+            self.cumulative_lines.insert(op[3], len(l))
+          else:
+            self.cumulative_lines.insert(op[3], len(l) + 1)
         if op[1] >= len(self.saved_buffer):
           p = pos[-1] - 1
           s = "\n" + s
@@ -470,6 +494,9 @@ class DocumentBuffer:
         s = "\n".join(self.saved_buffer[op[1]:op[2]])
         for i in range(op[1], op[2]):
           del self.cumulative_lines[op[3]]
+          # If last line previous line needs to remove new line char
+          if op[3] and op[3] == self.cumulative_lines.last_index:
+            self.cumulative_lines[op[3] - 1] -= 1
         if op[1] == len(buffer):
           p = pos[-(op[2] - op[1]) - 1] - 1
           s = "\n" + s
@@ -487,7 +514,11 @@ class DocumentBuffer:
         # Since Sequence Matcher works in order, we need to use the indices on
         # the buffer.
         for i, s in zip(range(op[3], op[4]), selection):
-          self.cumulative_lines[i] = len(s) + 1
+          # Account for new lines at end of document
+          if i == self.cumulative_lines.last_index:
+            self.cumulative_lines[i] = len(s)
+          else:
+            self.cumulative_lines[i] = len(s) + 1
 
         S2 = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
         for op2 in S2:
@@ -541,6 +572,7 @@ class DocumentBuffer:
 
     # async execution
     def applyOps(self, ops):
+      # Never awaits..
       self.buffer_mutex.acquire()
       try:
         for op in ops:

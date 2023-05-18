@@ -92,7 +92,7 @@ def pynvimCatchException(fn, alt=None):
     except Exception as e:
       self.status = f"Error: {e}. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code."
       self.log.debug(traceback.format_exc())
-      self.updateStatusLine()
+      # self.updateStatusLine()
 
       if self.log.level == NOTSET:
         self.nvim.err_write(traceback.format_exc(e) + "\n")

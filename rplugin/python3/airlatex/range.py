@@ -103,25 +103,29 @@ class FenwickTree:
 
     def __getitem__(self, index):
         if index == -1:
-            index = self.last_index + 1
+            index = self.last_index
         return self.get_cumulative_value(index + 1)
 
     def __setitem__(self, index, value):
         if index == -1:
-            index = self.last_index + 1
+            index = self.last_index
         self.insert(index, value)
 
     def __delitem__(self, index):
         if index == -1:
-            index = self.last_index + 1
+            index = self.last_index
         self.remove(index)
 
 class NaiveAccumulator:
-    def __init__(self, size=512):
+    def __init__(self, base=None):
         self.array = [0]
         self.last_index = 0
+        if base:
+          self.initialize(base)
 
     def initialize(self, array):
+        self.array = [0]
+        self.last_index = 0
         for i, a in enumerate(array):
           self.insert(i, a)
 
@@ -130,16 +134,16 @@ class NaiveAccumulator:
         self.last_index += 1
 
     def get_cumulative_value(self, index):
-        return sum(self.array[:min(index, self.last_index)])
+        if index < 0:
+          index = len(self.array) + index
+        return sum(self.array[:min(index, self.last_index + 1)])
 
     def remove(self, index):
         if index < 0:
           index = len(self.array) + index
-        print(self.array)
         self.array[index] = 0
         del self.array[index]
         self.last_index -= 1
-        print(self.array)
 
     def search(self, v):
         t = 0
@@ -153,7 +157,7 @@ class NaiveAccumulator:
         return self[row] + col
 
     def __getitem__(self, index):
-        return self.get_cumulative_value(index + 1)
+        return self.get_cumulative_value(index)
 
     def __setitem__(self, index, value):
         if index > self.last_index:
@@ -167,4 +171,4 @@ class NaiveAccumulator:
 
     @property
     def arr(self):
-        return self.array[:self.last_index]
+        return self.array[:self.last_index + 1]

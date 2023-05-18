@@ -1,3 +1,4 @@
+import sys
 import pynvim
 from tornado.ioloop import IOLoop, PeriodicCallback
 from tornado import gen
@@ -6,11 +7,13 @@ import re
 from itertools import count
 import json
 from airlatex.util import _genTimeStamp, generateId
+
+from airlatex.documentbuffer import DocumentBuffer
 import time
-from tornado.locks import Lock, Event
+from tornado.locks import Event
 from logging import DEBUG
 from tornado.httpclient import HTTPRequest
-from asyncio import Queue, wait_for, TimeoutError
+from asyncio import Queue, Lock, wait_for, TimeoutError
 from logging import getLogger
 from asyncio import sleep, create_task
 import requests
@@ -49,30 +52,45 @@ class AirLatexProject:
       cookie=None,
       wait_for=15,
       validate_cert=True):
-    project["handler"] = self
 
-    self.url = url
-    self.project = project
-    self.csrf = csrf
+    # Set thread management here, since refresh clears all of these
+    self.connection_lock = Lock()
+    self.queue_lock = Lock()
+    self.refresh(url, project, csrf, cookie)
 
+    # Default unchanging
     self.sidebar = session.sidebar
     self.session = session
-    self.session_id = None
 
-    self.cookie = cookie
     self.wait_for = wait_for if str(wait_for).isnumeric() else None
     self.validate_cert = validate_cert
 
+    self.log = getLogger("AirLatex")
+
+    self.heartbeat = PeriodicCallback(self.keep_alive, 20000)
+
+  def refresh(self, url, project, csrf, cookie=None):
+    self.url = url
+    self.project = project
+    self.cookie = cookie
+    self.csrf = csrf
+
+    # Reset information
     self.command_counter = count(1)
     self.ws = None
+    self.session_id = None
     self.requests = {}
     self.cursors = {}
     self.documents = {}
-    self.log = getLogger("AirLatex")
-    self.ops_queue = Queue()
     self.pending_comments = {}
-    self.connection_lock = Lock()
-    self.heartbeat = PeriodicCallback(self.keep_alive, 20000)
+
+    # Reset thread stuff
+    self.ops_queue = Queue()
+    self.join_event = Event()
+    if self.connection_lock.locked():
+      self.connection_lock.release()
+    if self.queue_lock.locked():
+      self.queue_lock.release()
 
   async def start(self):
     self.log.debug("Starting connection to server.")
@@ -346,7 +364,7 @@ class AirLatexProject:
 
     # server needs to answer before proceeding
     if self.wait_for is None:
-      await event.wait
+      await event.wait()
     else:
       try:
         await wait_for(event.wait(), timeout=self.wait_for)
@@ -437,11 +455,21 @@ class AirLatexProject:
     doc = None
     for doc in self.documents.values():
       create_task(doc["buffer"].deactivate())
+      del doc["buffer"]
+
+    # Intention disconnet
     if msg == "Disconnected.":
-      if doc and len(doc["buffer"].allBuffers) > 0:
+      if doc and len(DocumentBuffer.allBuffers) > 0:
         create_task(self.sidebar.updateStatus("Connected"))
       else:
         create_task(self.sidebar.updateStatus("Online"))
+    else:
+        create_task(self.sidebar.updateStatus(msg))
+
+    # A simple reference count shows that this is nowhere ready to be GC'd.
+    # So just reuse the object,
+    # self.project["handler"] = None
+    # self.log.debug(f"References to project {sys.getrefcount(self)}")
     self.connection_lock.release()
     await self.sidebar.triggerRefresh()
 
@@ -560,7 +588,7 @@ class AirLatexProject:
           # be very annoying
           elif data["name"] in ("resolve-thread", "new-comment", "edit-message",
                                 "delete-message", "reopen-thread"):
-            if comments == None:
+            if self.comments == None:
               create_task(self.session.comments.markInvalid())
               continue
             self.log.debug(data)
@@ -603,6 +631,7 @@ class AirLatexProject:
             self.project["open"] = True
             await self.send("cmd", {"name": "clientTracking.getConnectedUsers"})
             await self.sidebar.triggerRefresh()
+            self.join_event.set()
 
           elif cmd == "joinDoc":
             id = request["args"][0]

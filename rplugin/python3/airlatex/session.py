@@ -38,7 +38,7 @@ class AirLatexSession:
     self.httpHandler = requests.Session()
     self.httpHandler.verify = False if self.nvim.eval(
         "g:AirLatexAllowInsecure") == 1 else True
-    self.projectList = []
+    self.projects = {}
     self.log = getLogger("AirLatex")
 
     self.wait_for = self.nvim.eval("g:AirLatexWebsocketTimeout")
@@ -51,8 +51,14 @@ class AirLatexSession:
   @property
   def cookies(self):
     return "; ".join(
-        name + "=" + value
+        f"{name}={value}"
         for name, value in self.httpHandler.cookies.get_dict().items())
+
+  @property
+  def projectList(self):
+    projectList = list(self.projects.values())
+    projectList.sort(key=lambda p: p.get("lastUpdated"), reverse=True)
+    return projectList
 
   async def _getWebSocketURL(self):
     """
@@ -83,7 +89,7 @@ class AirLatexSession:
         Disconnects all connected AirLatexProjects.
         """
     self.log.debug("cleanup()")
-    for p in self.projectList:
+    for p in self.projects.values():
       if "handler" in p:
         p["handler"].disconnect()
       p["connected"] = False
@@ -228,8 +234,8 @@ class AirLatexSession:
 
         if legacy:
           self.log.debug("is legacy")
-          self.projectList = data
-          for project in self.projectList:
+          projects = data
+          for project in projects:
             owner = project["owner"]
             last_updated_by = project["lastUpdatedBy"]
             owner["firstName"] = owner.get("first_name", "")
@@ -238,8 +244,8 @@ class AirLatexSession:
             last_updated_by["lastName"] = last_updated_by.get("last_name", "")
         else:
           self.log.debug("is NOT legacy")
-          self.projectList = data["projects"]
-        self.projectList.sort(key=lambda p: p["lastUpdated"], reverse=True)
+          projects = data["projects"]
+        self.projects = {p["id"]: p for p in projects}
         create_task(self.sidebar.triggerRefresh())
       except Exception as e:
 
@@ -258,7 +264,7 @@ class AirLatexSession:
         """
     if not self.authenticated:
       create_task(self.sidebar.updateStatus("Not Authenticated to connect"))
-      return
+      return None
 
     anim_status = create_task(
         self.sidebar.animate("Connecting to Project"))
@@ -271,16 +277,30 @@ class AirLatexSession:
         re.search('<meta\s[^>]*name="ol-csrfToken"[^>]*>',
                   projectPage.text)[0])[1]
 
-    # Side bar set command in document
-    airlatexproject = AirLatexProject(
-        await self._getWebSocketURL(),
-        project,
-        csrf,
-        self,
-        cookie=self.cookies,
-        wait_for=self.wait_for,
-        validate_cert=self.httpHandler.verify)
+    # Explicitly put it in proect, as we may have injected a project
+    # (e.g. on reconnect)
+    self.projects[project['id']].update(project)
+    if self.projects[project['id']].get("handler"):
+      airlatexproject = self.projects[project['id']]["handler"]
+      airlatexproject.refresh(
+          await self._getWebSocketURL(),
+          self.projects[project['id']],
+          csrf,
+          cookie=self.cookies)
+    else:
+      # Side bar set command in document
+      airlatexproject = AirLatexProject(
+          await self._getWebSocketURL(),
+          self.projects[project['id']],
+          csrf,
+          self,
+          cookie=self.cookies,
+          wait_for=self.wait_for,
+          validate_cert=self.httpHandler.verify)
+      self.projects[project['id']]["handler"] = airlatexproject
+
     # start connection
     anim_status.cancel()
     create_task(self.sidebar.updateStatus("Connected"))
     create_task(airlatexproject.start())
+    return airlatexproject

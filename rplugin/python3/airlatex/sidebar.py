@@ -17,7 +17,6 @@ class SideBar:
     self.buffer_write_i = 0
     self.cursorPos = []
     self.log = getLogger("AirLatex")
-    self.log.debug_gui("SideBar initialized.")
     self.cursor = (2, 0)
 
     self.symbol_open = self.nvim.eval("g:AirLatexArrowOpen")
@@ -31,16 +30,12 @@ class SideBar:
   # ----------- #
 
   async def triggerRefresh(self, all=True):
-    self.log.debug_gui("trying to acquire (in trigger)")
     await self.uilock.acquire()
-    self.log.debug_gui("triggerRefresh() -> event called")
     self.nvim.async_call(self.listProjects, all)
 
   async def updateStatus(self, msg):
-    self.log.debug_gui("trying to acquire (in update)")
     await self.uilock.acquire()
     self.status = msg
-    self.log.debug_gui("updateStatus()")
     self.nvim.async_call(self.updateStatusLine)
 
   # ----------- #
@@ -81,7 +76,6 @@ class SideBar:
       self.cursorPos = pos
 
   def initGUI(self):
-    self.log.debug_gui("initGUI()")
     self.initSidebarBuffer()
     create_task(self.uilock.acquire())
     self._listProjects(False)
@@ -93,7 +87,6 @@ class SideBar:
 
   @pynvimCatchException
   def initSidebarBuffer(self):
-    self.log.debug_gui("initSidebarBuffer()")
 
     self.command(
     """
@@ -144,7 +137,6 @@ class SideBar:
     self._listProjects(overwrite)
 
   def _listProjects(self, overwrite=False):
-    self.log.debug_gui("listProjects(%s)" % str(overwrite))
     if self.buffer == self.nvim.current.window.buffer:
       self.cursor = self.nvim.current.window.cursor
 
@@ -167,16 +159,15 @@ class SideBar:
         pos = [project]
 
         # skip deleted projects
-        if "trashed" in project and project["trashed"]:
+        if project.get("trashed"):
           continue
 
         # skip archived projects
-        if "archived" in project and project[
-            "archived"] and not self.showArchived:
+        if project.get("archived") and not self.showArchived:
           continue
 
         # list project structure
-        if "open" in project and project["open"]:
+        if project.get("open"):
           self.bufferappend(" " + self.symbol_open + " " + project["name"], pos)
           self.log.debug(f"{project}")
           self.listProjectStructure(project.get("rootFolder", [None])[0], pos)
@@ -238,7 +229,6 @@ class SideBar:
 
   @pynvimCatchException
   def listProjectStructure(self, rootFolder, pos, indent=0):
-    self.log.debug_gui("listProjectStructure()")
     if not rootFolder:
       self.bufferappend("Unable to load folders")
       return
@@ -388,6 +378,7 @@ class SideBar:
               create_task(project["handler"].disconnect()).add_done_callback(del_hander)
           create_task(self.triggerRefresh())
         else:
+          self.log.debug(f"connecting {project}")
           create_task(self.airlatex.session.connectProject(project))
 
     elif not isinstance(self.cursorPos[-1], dict):
@@ -408,4 +399,5 @@ class SideBar:
           self.nvim.command(f'buffer {buffer.number}')
           return
       documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
+      self.log.debug(f"{self.cursorPos}")
       create_task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))

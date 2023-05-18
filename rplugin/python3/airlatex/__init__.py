@@ -173,10 +173,6 @@ class AirLatex:
     if self.sidebar:
       self.sidebar.cursorAction("del")
 
-  # @pynvim.command('AirLatex_UpdatePos', nargs=0, sync=True)
-  # def projectEnter(self):
-  #     plugin.updateProject()
-
   @pynvim.function('AirLatex_Compile', sync=True)
   def compile(self, args):
     buffer = self.nvim.current.buffer
@@ -251,6 +247,66 @@ class AirLatex:
   @pynvim.function('AirLatex_PrevComment')
   def prevComment(self, args):
     self.comments.changeComment(-1)
+
+  @pynvim.function('AirLatex_Refresh')
+  def refresh(self, args):
+    pid, did = args
+    # TODO move out of init.
+    # Probs to session and DocumentBuffer
+    async def callback(handler):
+      await handler.join_event.wait()
+      self.log.debug(f"{handler.project}")
+      found = False
+      for folder in handler.project["rootFolder"]:
+        for doc in folder["docs"]:
+          if did == doc["_id"]:
+            found = True
+            break
+        if found:
+          break
+      if not found:
+        self.log.debug(f"Doc not found..?")
+        raise Exception(f"{pid, did}")
+      # Rejoin vim thread
+      def _callback():
+        cursor = self.nvim.current.window.cursor[:]
+        documentbuffer = DocumentBuffer([handler.project, doc], self.nvim,
+                                        new_buffer=False)
+        create_task(handler.joinDocument(documentbuffer))
+        create_task(handler.gui_await())
+        # TODO: Something has to be done about these callbacks
+        # Join async and nvim.async into a unified api
+        # Maybe decorator on functions that need to be on vim thread?
+        # decorator takes function, returns async
+        # In async, make callback to OG function through nvim.async
+        # Is there a then for asyncio?
+        #
+        # Maybe make a Task class?
+        # Can do a proper "then" that way too
+        # decorate can also check if being invoked through then, or to run as
+        # normal function that way too.
+        def set_cursor():
+          row = min(cursor[0], len(self.nvim.current.buffer) - 1)
+          column = min(cursor[1], len(self.nvim.current.buffer[row]) - 1)
+          self.nvim.current.window.cursor = [row, column]
+        create_task(documentbuffer.buffer_event.wait()).add_done_callback(
+            lambda _: self.nvim.async_call(set_cursor))
+      self.nvim.async_call(_callback)
+      # this would then be (Task(connect)
+      #                         .then(wait_for_join)
+      #                         .then(build_buffer) # build buffer in decorator
+      #                         .next               # Return of wait buffer async
+      #                         .then(set_cursor))  # in decorator
+      # opposed to this lambda mess
+
+    # If the project is already connected, then just use the exisiting
+    # connection to reconnect
+    if self.session.projects.get(pid, {}).get("connected", False):
+      create_task(callback(self.session.projects[pid]["handler"]))
+    else:
+      create_task(
+          self.session.connectProject({"id": pid, "name": "reloading"})).add_done_callback(
+            lambda future:create_task(callback(future.result())))
 
   def asyncCatchException(self, loop, context):
     message = context.get('message')

@@ -188,7 +188,10 @@ class CommentBuffer:
     self.bufferappend("")
 
     for message in thread["messages"]:
-      user = message['user']['first_name']
+      self.log.debug(f"{message['user']}")
+      user = message['user'].get('first_name', '')
+      if not user:
+        user = message['user'].get('email', 'user')
       content = message['content']
       timestamp = message['timestamp']
 
