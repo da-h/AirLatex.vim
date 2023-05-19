@@ -1,14 +1,11 @@
 import pynvim
-from airlatex.task import Task, AsyncDecorator
+from airlatex.lib.task import Task, AsyncDecorator
+from airlatex.lib.log import init_logger, Settings
+
 from airlatex.session import AirLatexSession
+from airlatex.buffers import Sidebar, Comments, Document
 
-# from airlatex.buffers import SideBar, CommentBuffer, DocumentBuffer
-from airlatex.sidebar import SideBar
-# from airlatex.commentbuffer import CommentBuffer
-from airlatex.documentbuffer import DocumentBuffer
-
-from airlatex.util import init_logger, Settings
-
+__version__ = "0.2"
 
 @pynvim.plugin
 class AirLatex:
@@ -48,17 +45,17 @@ class AirLatex:
 
     # initialize sidebar
     if not self.sidebar:
-      self.sidebar = SideBar(self.nvim, self)
+      self.sidebar = Sidebar(self.nvim, self)
     self.sidebar.initGUI()
-    # self.sidebar.hide()
+    self.sidebar.hide()
 
-    # # initialize comment buffer
-    # if not self.comments:
-    #   self.comments = CommentBuffer(self.nvim, self)
-    # self.comments.initGUI()
+    # initialize comment buffer
+    if not self.comments:
+      self.comments = Threads(self.nvim, self)
+    self.comments.initGUI()
 
-    # # Show after prevents the buffers from gettin in each other's way.
-    # self.sidebar.show()
+    # Show after prevents the buffers from gettin in each other's way.
+    self.sidebar.show()
 
     # Attempt connection and start
     try:

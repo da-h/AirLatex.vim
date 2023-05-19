@@ -18,12 +18,9 @@ from logging import getLogger
 import requests
 import traceback
 
-import airlatex.task as T
 from airlatex.task import AsyncDecorator, Task
 
 from datetime import datetime
-
-from http.cookies import SimpleCookie
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -332,11 +329,6 @@ class AirLatexProject:
 
     obj_to_send = {
         "doc": document["_id"],
-        # "meta": {
-        #     "source": source,
-        #     "ts": _genTimeStamp(),
-        #     "user_id": self.used_id
-        # },
         "op": ops_buffer,
         "v": document["version"],
         "lastV": document["version"] - 1,
@@ -459,7 +451,7 @@ class AirLatexProject:
       msg = "Online"
       if doc and len(DocumentBuffer.allBuffers) > 0:
         msg = "Connected"
-    # Task(self.sidebar.updateStatus(msg))
+    Task(self.sidebar.updateStatus(msg))
 
     # A simple reference count shows that this is nowhere ready to be GC'd.
     # So just reuse the object,
