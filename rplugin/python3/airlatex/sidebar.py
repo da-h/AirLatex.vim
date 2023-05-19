@@ -1,10 +1,11 @@
 import pynvim
 from time import gmtime, strftime
-from asyncio import Queue, Lock, sleep, create_task
+from asyncio import Queue, Lock, sleep
 from airlatex.documentbuffer import DocumentBuffer
 from logging import getLogger, NOTSET
 from airlatex.util import __version__, pynvimCatchException
 
+from airlatex.task import AsyncDecorator, Task
 
 class SideBar:
 
@@ -31,12 +32,12 @@ class SideBar:
 
   async def triggerRefresh(self, all=True):
     await self.uilock.acquire()
-    self.nvim.async_call(self.listProjects, all)
+    return Task(self.listProjects, all)
 
   async def updateStatus(self, msg):
     await self.uilock.acquire()
     self.status = msg
-    self.nvim.async_call(self.updateStatusLine)
+    return Task(self.updateStatusLine)
 
   # ----------- #
   # GUI Drawing #
@@ -58,6 +59,7 @@ class SideBar:
       await sleep(0.1)
       i += 1
 
+  @AsyncDecorator
   @pynvimCatchException
   def updateStatusLine(self, releaseLock=True):
     if hasattr(self, 'statusline') and len(self.statusline):
@@ -77,7 +79,7 @@ class SideBar:
 
   def initGUI(self):
     self.initSidebarBuffer()
-    create_task(self.uilock.acquire())
+    Task(self.uilock.acquire())
     self._listProjects(False)
 
   def command(self, cmd):
@@ -132,6 +134,7 @@ class SideBar:
       autocmd VimLeavePre <buffer> :call AirLatex_Close()
     """)
 
+  @AsyncDecorator
   @pynvimCatchException
   def listProjects(self, overwrite=False):
     self._listProjects(overwrite)
@@ -274,7 +277,7 @@ class SideBar:
                 exec 'buffer {self.buffer.number}'
                 exec splitType . 'resize ' . splitSize
             """)
-      create_task(self.triggerRefresh())
+      Task(self.triggerRefresh())
 
   def hide(self):
     if self.visible:
@@ -356,7 +359,7 @@ class SideBar:
       # disconnect all
       elif self.cursorPos[0] == "retry":
         if self.airlatex.session:
-          create_task(self.airlatex.session.login())
+          Task(self.airlatex.session.login())
 
       # else is project
       elif not isinstance(self.cursorPos[0], str):
@@ -370,16 +373,14 @@ class SideBar:
             # different implications for being True, False and None. We set it
             # back to None here such that it can properly be set later.
             if project.get("connected"):
-              def del_hander(*args):
-                if "handler" in project:
-                  del project["handler"]
+              @Task(project["handler"].disconnect).fn()
+              async def del_connect(*args):
                 if "connected" in project:
                   del project["connected"]
-              create_task(project["handler"].disconnect()).add_done_callback(del_hander)
-          create_task(self.triggerRefresh())
+          Task(self.triggerRefresh())
         else:
           self.log.debug(f"connecting {project}")
-          create_task(self.airlatex.session.connectProject(project))
+          Task(self.airlatex.session.connectProject(project))
 
     elif not isinstance(self.cursorPos[-1], dict):
       pass
@@ -387,7 +388,7 @@ class SideBar:
     # is folder
     elif self.cursorPos[-1]["type"] == "folder":
       self._toggle(self.cursorPos[-1], "open")
-      create_task(self.triggerRefresh())
+      Task(self.triggerRefresh())
 
     # is file
     elif self.cursorPos[-1]["type"] == "file":
@@ -400,4 +401,4 @@ class SideBar:
           return
       documentbuffer = DocumentBuffer(self.cursorPos, self.nvim)
       self.log.debug(f"{self.cursorPos}")
-      create_task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))
+      Task(self.cursorPos[0]["handler"].joinDocument(documentbuffer))

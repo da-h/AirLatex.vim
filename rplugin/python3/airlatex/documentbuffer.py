@@ -4,7 +4,7 @@ import pynvim
 from difflib import SequenceMatcher
 from hashlib import sha1
 import asyncio
-from asyncio import create_task, Lock
+from asyncio import Lock
 from logging import getLogger
 import time
 
@@ -12,6 +12,8 @@ from intervaltree import Interval, IntervalTree
 from airlatex.range import FenwickTree, NaiveAccumulator
 
 from copy import deepcopy
+
+from airlatex.task import AsyncDecorator, Task
 
 import hashlib
 
@@ -110,6 +112,8 @@ class DocumentBuffer:
     if self.buffer not in DocumentBuffer.allBuffers:
       return
     del DocumentBuffer.allBuffers[self.buffer]
+
+    @Task.Fn(vim=True)
     def callback():
       # Changing the name breaks vimtex.
       try:
@@ -133,7 +137,6 @@ class DocumentBuffer:
         self.thread_intervals.clear()
       finally:
         self.buffer_mutex.release()
-    self.nvim.async_call(callback)
 
   def initDocumentBuffer(self, new_buffer):
 
@@ -190,10 +193,10 @@ class DocumentBuffer:
   def syncGit(self, message=None):
     while not message:
       message = self.nvim.funcs.input('Commit Message: ')
-    create_task(self.project_handler.syncGit(message))
+    Task(self.project_handler.syncGit(message))
 
   def compile(self):
-    create_task(self.project_handler.compile())
+    Task(self.project_handler.compile())
 
   def highlightRange(
       self, highlight, group, start_line, start_col, end_line, end_col):
@@ -252,21 +255,17 @@ class DocumentBuffer:
     _, start_line, start_col, *_ = self.getLineInfo(pos, pos + 1)
     return (start_line + 1, start_col), offset
 
+  @AsyncDecorator
   def publishComment(self, thread, count, content):
-
-    def callback():
-      self.log.debug(f"Calling {content, thread, count}")
-      create_task(
-          self.project_handler.sendOps(
-              self.document,
-              self.buildContentHash(),
-              ops=[{
-                  "c": content,
-                  "p": count,
-                  "t": thread
-              }]))
-
-    self.nvim.async_call(callback)
+    # Yes, we call document, just to call back because we to get buffer info.
+    return self.project_handler.sendOps(
+        self.document,
+        self.buildContentHash(),
+        ops=[{
+            "c": content,
+            "p": count,
+            "t": thread
+        }])
 
   def highlightComment(self, comments, thread):
     thread_id = thread["id"]
@@ -299,9 +298,9 @@ class DocumentBuffer:
     self.thread_intervals[start:end] = thread_id
 
   async def highlightComments(self, comments, threads=None):
-    # Clear any existing highlights
-
+    @Task(self.buffer_event.wait).fn(vim=True)
     def highlight_callback():
+      # Clear any existing highlights
       self.buffer.api.clear_namespace(self.highlight, 0, -1)
       self.buffer.api.clear_namespace(self.highlight2, 0, -1)
       self.thread_intervals.clear()
@@ -326,9 +325,6 @@ class DocumentBuffer:
         self.highlightRange(
             self.highlight2, 'AirLatexDoubleCommentGroup', *lineinfo)
 
-    await self.buffer_event.wait()
-    self.nvim.async_call(highlight_callback)
-
   async def showComments(self, cursor, comment_buffer):
     previous_state = self.comments_active
     self.comments_display = not (comment_buffer.drafting or
@@ -336,7 +332,8 @@ class DocumentBuffer:
     if not self.comments_display:
       return
     if not previous_state:
-      self.nvim.async_call(self.buffer.api.clear_namespace, self.pending_selection, 0, -1)
+      Task(self.buffer.api.clear_namespace, self.pending_selection, 0, -1,
+           vim=True)
       self.comment_selection = IntervalTree()
 
     cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
@@ -367,6 +364,7 @@ class DocumentBuffer:
         "id") == self.project_handler.session_id:
       return
 
+    @Task.Fn(cursor, vim=True)
     def handle_cursor(cursor):
       tmp_buffer = self.buffer[:]
       if cursor["id"] not in self.cursors:
@@ -390,8 +388,6 @@ class DocumentBuffer:
             highlight, 'CursorGroup', cursor["row"], cursor["column"],
             cursor["column"] + 1)
 
-    self.nvim.async_call(handle_cursor, cursor)
-
   def getLineInfo(self, start, end):
     char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
     # TODO replace with search
@@ -409,6 +405,7 @@ class DocumentBuffer:
 
   def write(self, lines):
 
+    @Task(self.buffer_mutex.acquire).fn(self.buffer, lines, vim=True)
     def writeLines(buffer, lines):
       buffer[:] = []
       buffer[0] = lines[0]
@@ -424,20 +421,18 @@ class DocumentBuffer:
       self.buffer_mutex.release()
       self.buffer_event.set()
 
-    create_task(self.buffer_mutex.acquire()).add_done_callback(
-        lambda _: self.nvim.async_call(writeLines, self.buffer, lines))
 
   def writeBuffer(self, comments=None):
     self.log.debug("writeBuffer: calculating changes to send")
 
     # update CursorPosition
     cursor = self.nvim.current.window.cursor
-    create_task(
+    Task(
         self.project_handler.updateCursor(
             self.document, cursor))
 
     if comments:
-      create_task(self.showComments(cursor, comments))
+      Task(self.showComments(cursor, comments))
 
     # skip if not yet initialized
     if self.saved_buffer is None:
@@ -552,7 +547,7 @@ class DocumentBuffer:
     self.log.debug(" -> sending ops")
 
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
-    create_task(
+    Task(
         self.project_handler.sendOps(
             self.document, self.buildContentHash(), ops, track))
 
@@ -571,9 +566,8 @@ class DocumentBuffer:
     ops = packet['op']
 
     # async execution
+    @Task(self.buffer_mutex.acquire).fn(self, ops, vim=True)
     def applyOps(self, ops):
-      # Never awaits..
-      self.buffer_mutex.acquire()
       try:
         for op in ops:
           self.log.debug(f"the op {op} and {'c' in op}")
@@ -596,13 +590,12 @@ class DocumentBuffer:
           if 'c' in op:
             thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
             self.threads[op['t']] = thread
-            create_task(self.highlightComments(comments))
+            Task(self.highlightComments(comments))
       except Exception as e:
         self.log.debug(f"{op} failed: {e}")
       finally:
         self.buffer_mutex.release()
 
-    self.nvim.async_call(applyOps, self, ops)
 
   # inster string at given position
   def _insert(self, buffer, start, string):

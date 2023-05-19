@@ -1,9 +1,10 @@
 import pynvim
 from time import gmtime, strftime
-from asyncio import Queue, Lock, sleep, create_task
+from asyncio import Lock, sleep
 from airlatex.documentbuffer import DocumentBuffer
 from logging import getLogger, NOTSET
 from airlatex.util import pynvimCatchException, generateCommentId
+from airlatex.task import Task
 import time
 import textwrap
 import re
@@ -39,7 +40,7 @@ class CommentBuffer:
   async def triggerRefresh(self):
     self.log.debug("call")
     await self.uilock.acquire()
-    self.nvim.async_call(self._render)
+    Task(self._render)
 
   async def markInvalid(self):
     self.log.debug("invalid")
@@ -52,11 +53,10 @@ class CommentBuffer:
 
   def clear(self):
     self.log.debug("clear")
+    @Task(self.uilock.acquire()).fn(vim=True)
     def callback():
       self.buffer[:] = []
       self.uilock.release()
-    create_task(self.uilock.acquire()).add_done_callback(
-        lambda _: self.nvim.async_call(callback))
 
   @property
   def visible(self):
@@ -148,8 +148,9 @@ class CommentBuffer:
 
     self.threads = sorted([t.data for t in threads], key=lookup)
     self.index = 0
-    create_task(self.triggerRefresh())
+    Task(self.triggerRefresh())
 
+  @AsyncDecorator
   @pynvimCatchException
   def _render(self):
     self.log.debug(f"in render {self.threads, self.index}")
@@ -271,17 +272,17 @@ class CommentBuffer:
       self.drafting = False
       if not self.creation:
         if not submit:
-          create_task(self.triggerRefresh())
+          Task(self.triggerRefresh())
           return
         self.project.replyComment(self.threads[self.index], self.content)
-        create_task(self.triggerRefresh())
+        Task(self.triggerRefresh())
       else:
         doc = self.creation
         self.creation = ""
         if not submit:
           if self.previous_open:
             self.buffer[:] = []
-            create_task(self.triggerRefresh())
+            Task(self.triggerRefresh())
           else:
             self.hide()
           return
@@ -291,7 +292,7 @@ class CommentBuffer:
         self.project.createComment(thread, doc, self.content)
         self.threads = [thread]
         self.index = 0
-        create_task(self.triggerRefresh())
+        Task(self.triggerRefresh())
 
     # If on the other page
     else:
@@ -332,7 +333,7 @@ class CommentBuffer:
     if self.invalid:
       return
     self.index = (self.index + change) % len(self.threads)
-    create_task(self.triggerRefresh())
+    Task(self.triggerRefresh())
 
   @pynvimCatchException
   def toggle(self):
@@ -349,8 +350,8 @@ class CommentBuffer:
       resolve_pattern = re.compile(r'resolve\s+✓✓$')
       if resolve_pattern.search(self.nvim.current.line):
         self.project.resolveComment(self.threads[self.index])
-        create_task(self.triggerRefresh())
+        Task(self.triggerRefresh())
       resolve_pattern = re.compile(r'reopen\s+⬃⬃$')
       if resolve_pattern.search(self.nvim.current.line):
         self.project.reopenComment(self.threads[self.index])
-        create_task(self.triggerRefresh())
+        Task(self.triggerRefresh())

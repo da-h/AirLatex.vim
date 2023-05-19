@@ -3,7 +3,7 @@ import keyring
 import pynvim
 import platform
 from sys import version_info
-from asyncio import create_task
+from airlatex.task import Task, AsyncDecorator
 from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
 from airlatex.commentbuffer import CommentBuffer
@@ -17,6 +17,8 @@ class AirLatex:
   def __init__(self, nvim):
 
     self.nvim = nvim
+    AsyncDecorator.nvim = nvim
+
     self.servername = self.nvim.eval("v:servername")
     self.sidebar = False
     self.comments = False
@@ -94,7 +96,7 @@ class AirLatex:
           self.comments,
           self.nvim,
           https=https)
-      create_task(self.session.login())
+      Task(self.session.login())
     except Exception as e:
       self.sidebar.log.error(str(e))
       self.nvim.out_write(str(e) + "\n")
@@ -115,11 +117,11 @@ class AirLatex:
   @pynvim.function('AirLatex_SidebarRefresh', sync=False)
   def sidebarRefresh(self, args):
     if self.sidebar:
-      create_task(self.sidebar.triggerRefresh())
+      Task(self.sidebar.triggerRefresh())
 
   @pynvim.function('AirLatex_SidebarUpdateStatus', sync=False)
   def sidebarStatus(self, args):
-    create_task(self.sidebar.updateStatus())
+    Task(self.sidebar.updateStatus())
 
   @pynvim.function('AirLatex_ProjectEnter', sync=True)
   def projectEnter(self, args):
@@ -144,19 +146,16 @@ class AirLatex:
       end_col = 1
       end_line += 1
 
-    def callback():
-      if self.comments.invalid:
-        return
-      buffer = self.nvim.current.buffer
-      if buffer in DocumentBuffer.allBuffers:
-        document = DocumentBuffer.allBuffers[buffer]
-        self.comments.creation = document.document["_id"]
-        self.comments.project = document.project_handler
-        document.markComment(
-            start_line - 1, start_col - 1, end_line - 1, end_col - 1)
-        self.comments.prepCommentCreation()
-
-    self.nvim.async_call(callback)
+    if self.comments.invalid:
+      return
+    buffer = self.nvim.current.buffer
+    if buffer in DocumentBuffer.allBuffers:
+      document = DocumentBuffer.allBuffers[buffer]
+      self.comments.creation = document.document["_id"]
+      self.comments.project = document.project_handler
+      document.markComment(
+          start_line - 1, start_col - 1, end_line - 1, end_col - 1)
+      self.comments.prepCommentCreation()
 
   @pynvim.function('AirLatex_DraftResponse', sync=True)
   def commentDraft(self, args):
@@ -251,62 +250,51 @@ class AirLatex:
   @pynvim.function('AirLatex_Refresh')
   def refresh(self, args):
     pid, did = args
+    cursor = self.nvim.current.window.cursor[:]
+
     # TODO move out of init.
     # Probs to session and DocumentBuffer
-    async def callback(handler):
+    async def get_joined_doc(handler):
       await handler.join_event.wait()
-      self.log.debug(f"{handler.project}")
-      found = False
       for folder in handler.project["rootFolder"]:
         for doc in folder["docs"]:
           if did == doc["_id"]:
-            found = True
-            break
-        if found:
-          break
+            self.log.debug(f"Returning data {doc, handler}")
+            return doc, handler
       if not found:
         self.log.debug(f"Doc not found..?")
         raise Exception(f"{pid, did}")
-      # Rejoin vim thread
-      def _callback():
-        cursor = self.nvim.current.window.cursor[:]
-        documentbuffer = DocumentBuffer([handler.project, doc], self.nvim,
-                                        new_buffer=False)
-        create_task(handler.joinDocument(documentbuffer))
-        create_task(handler.gui_await())
-        # TODO: Something has to be done about these callbacks
-        # Join async and nvim.async into a unified api
-        # Maybe decorator on functions that need to be on vim thread?
-        # decorator takes function, returns async
-        # In async, make callback to OG function through nvim.async
-        # Is there a then for asyncio?
-        #
-        # Maybe make a Task class?
-        # Can do a proper "then" that way too
-        # decorate can also check if being invoked through then, or to run as
-        # normal function that way too.
-        def set_cursor():
-          row = min(cursor[0], len(self.nvim.current.buffer) - 1)
-          column = min(cursor[1], len(self.nvim.current.buffer[row]) - 1)
-          self.nvim.current.window.cursor = [row, column]
-        create_task(documentbuffer.buffer_event.wait()).add_done_callback(
-            lambda _: self.nvim.async_call(set_cursor))
-      self.nvim.async_call(_callback)
-      # this would then be (Task(connect)
-      #                         .then(wait_for_join)
-      #                         .then(build_buffer) # build buffer in decorator
-      #                         .next               # Return of wait buffer async
-      #                         .then(set_cursor))  # in decorator
-      # opposed to this lambda mess
+
+    # Rejoin vim thread
+    @AsyncDecorator
+    def build_buffer(doc, handler):
+      self.log.debug(f"Queing tasks")
+      documentbuffer = DocumentBuffer(
+          [handler.project, doc], self.nvim, new_buffer=False)
+      self.log.debug(f"Built docs")
+      Task(handler.joinDocument(documentbuffer))
+      Task(handler.gui_await())
+      self.log.debug(f"Starting wait")
+      return documentbuffer.buffer_event.wait
+
+    @AsyncDecorator
+    def set_cursor():
+      row = min(cursor[0], len(self.nvim.current.buffer) - 1)
+      column = min(cursor[1], len(self.nvim.current.buffer[row]) - 1)
+      self.nvim.current.window.cursor = [row, column]
 
     # If the project is already connected, then just use the exisiting
     # connection to reconnect
     if self.session.projects.get(pid, {}).get("connected", False):
-      create_task(callback(self.session.projects[pid]["handler"]))
+      task = Task(get_joined_doc, self.session.projects[pid]["handler"])
     else:
-      create_task(
-          self.session.connectProject({"id": pid, "name": "reloading"})).add_done_callback(
-            lambda future:create_task(callback(future.result())))
+      task = Task(
+          self.session.connectProject, {
+              "id": pid,
+              "name": "reloading"
+          }).then(get_joined_doc)
+    # Finish off the progression
+    task.then(build_buffer).next.then(set_cursor)
 
   def asyncCatchException(self, loop, context):
     message = context.get('message')

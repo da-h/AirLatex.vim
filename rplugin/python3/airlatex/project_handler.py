@@ -15,15 +15,15 @@ from logging import DEBUG
 from tornado.httpclient import HTTPRequest
 from asyncio import Queue, Lock, wait_for, TimeoutError
 from logging import getLogger
-from asyncio import sleep, create_task
 import requests
 import traceback
+
+import airlatex.task as T
+from airlatex.task import AsyncDecorator, Task
 
 from datetime import datetime
 
 from http.cookies import SimpleCookie
-
-from intervaltree import Interval, IntervalTree
 
 codere = re.compile(r"(\d):(?:(\d+)(\+?))?:(?::(?:(\d+)(\+?))?(.*))?")
 # code, await_id, await_mult, answer_id, answer_mult, msg = codere.match(str).groups()
@@ -227,11 +227,11 @@ class AirLatexProject:
 
   def resolveComment(self, thread):
     self.comments.get(thread, {})["resolved"] = True
-    create_task(self.adjustComment(thread, "resolve", resolve_state=False))
+    Task(self.adjustComment(thread, "resolve", resolve_state=False))
 
   def reopenComment(self, thread):
     self.comments.get(thread, {})["resolved"] = False
-    create_task(self.adjustComment(thread, "reopen", resolve_state=True))
+    Task(self.adjustComment(thread, "reopen", resolve_state=True))
 
   def replyComment(self, thread, content):
     self.comments.get(thread, {}).get("messages", []).append(
@@ -242,7 +242,7 @@ class AirLatexProject:
             "content": content,
             "timestamp": datetime.now().timestamp()
         })
-    create_task(self.adjustComment(thread, "messages", content))
+    Task(self.adjustComment(thread, "messages", content))
 
   def createComment(self, thread, doc_id, content):
     doc = self.documents[doc_id]["buffer"]
@@ -264,7 +264,7 @@ class AirLatexProject:
             ]
     }
     self.pending_comments[thread] = (doc_id, count, highlight)
-    create_task(self.adjustComment(thread, "messages", content, retract=True))
+    Task(self.adjustComment(thread, "messages", content, retract=True))
 
   async def getComments(self):
     comment_url = f"{self.session.url}/project/{self.project['id']}/threads"
@@ -282,7 +282,7 @@ class AirLatexProject:
       self.log.debug(traceback.format_exc())
       logger.debug("\nComments response content:")
       logger.debug(f"{response.content}\n---\n{e}")
-    create_task(self.session.comments.markInvalid())
+    Task(self.session.comments.markInvalid())
     return None
 
   async def clearRemoteCursor(self, session_id):
@@ -454,17 +454,15 @@ class AirLatexProject:
     await self.ops_queue.put((None, None, None, None, True))
     doc = None
     for doc in self.documents.values():
-      create_task(doc["buffer"].deactivate())
+      Task(doc["buffer"].deactivate)
       del doc["buffer"]
 
     # Intention disconnet
     if msg == "Disconnected.":
+      msg = "Online"
       if doc and len(DocumentBuffer.allBuffers) > 0:
-        create_task(self.sidebar.updateStatus("Connected"))
-      else:
-        create_task(self.sidebar.updateStatus("Online"))
-    else:
-        create_task(self.sidebar.updateStatus(msg))
+        msg = "Connected"
+    # Task(self.sidebar.updateStatus(msg))
 
     # A simple reference count shows that this is nowhere ready to be GC'd.
     # So just reuse the object,
@@ -589,15 +587,16 @@ class AirLatexProject:
           elif data["name"] in ("resolve-thread", "new-comment", "edit-message",
                                 "delete-message", "reopen-thread"):
             if self.comments == None:
-              create_task(self.session.comments.markInvalid())
+              Task(self.session.comments.markInvalid())
               continue
             self.log.debug(data)
             if data["name"] == "new-comment":
               thread = data["args"][0]
               if thread in self.pending_comments:
                 doc_id, count, content = self.pending_comments[thread]
-                self.documents[doc_id]["buffer"].publishComment(
-                    thread, count, content)
+                fn = self.documents[doc_id]["buffer"].publishComment
+                self.log.debug(f"type {type(fn)} instance {isinstance(fn, T._VimDecorator)}")
+                Task(AsyncDecorator(fn), thread, count, content).next
                 continue
 
             self.comments = await self.getComments()
@@ -609,7 +608,7 @@ class AirLatexProject:
                   docbuf.threads[thread_id]["resolved"] = (
                       "resolve-thread" == data["name"])
                 await docbuf.highlightComments(self.comments)
-            create_task(self.session.comments.triggerRefresh())
+            Task(self.session.comments.triggerRefresh())
 
           # unknown message
           else:

@@ -6,7 +6,7 @@ import json
 import time
 import tempfile
 from threading import Thread, currentThread
-from asyncio import Lock, sleep, create_task
+from asyncio import Lock, sleep
 from queue import Queue
 from os.path import expanduser
 import re
@@ -16,6 +16,7 @@ from http.cookiejar import CookieJar
 from logging import getLogger
 import traceback
 
+from airlatex.task import AsyncDecorator, Task
 
 class AirLatexSession:
 
@@ -93,7 +94,7 @@ class AirLatexSession:
       if "handler" in p:
         p["handler"].disconnect()
       p["connected"] = False
-    create_task(self.sidebar.updateStatus(msg))
+    Task(self.sidebar.updateStatus(msg))
 
   async def login(self):
     """
@@ -104,7 +105,7 @@ class AirLatexSession:
 
       if not self.username.startswith("cookies:"):
 
-        anim_status = create_task(self.sidebar.animate("Login"))
+        anim_status = Task(self.sidebar.animate("Login"))
 
         # get csrf token
         loginpage_request = lambda: self.httpHandler.get(self.url + "/login")
@@ -133,15 +134,15 @@ class AirLatexSession:
           if not login_response.ok:
             with tempfile.NamedTemporaryFile(delete=False) as f:
               f.write(login_response.text.encode())
-              create_task(
+              Task(
                   self.sidebar.updateStatus(
-                      "Could not login using the credentials. You can check the response page under: %s"
-                      % f.name))
+                      f"Could not login using the credentials. You can check"
+                      " the response page under: {f.name}"))
               return False
         except Exception as e:
           anim_status.cancel()
           self.log.debug(traceback.format_exc())
-          create_task(self.sidebar.updateStatus("Login failed: " + str(e)))
+          Task(self.sidebar.updateStatus("Login failed: " + str(e)))
           return False
 
       else:
@@ -154,7 +155,7 @@ class AirLatexSession:
               "Found Cookie for domain '%s' named '%s'" % (name, value))
           self.httpHandler.cookies[name] = value
 
-      anim_status = create_task(self.sidebar.animate("Connecting"))
+      anim_status = Task(self.sidebar.animate("Connecting"))
       # check if cookie found by testing if projects redirects to login page
       try:
         get = lambda: self.httpHandler.get(
@@ -172,15 +173,15 @@ class AirLatexSession:
               (self.url, str(redirect)))
           with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(redirect.text.encode())
-            create_task(
+            Task(
                 self.sidebar.updateStatus(
-                    "Connection failed: I could not retrieve the project list. You can check the response page under: %s"
-                    % f.name))
+                    "Connection failed: I could not retrieve the project list."
+                    " You can check the response page under: {f.name}"))
           return False
       except Exception as e:
         anim_status.cancel()
         self.log.debug(traceback.format_exc())
-        create_task(self.sidebar.updateStatus("Connection failed: " + str(e)))
+        Task(self.sidebar.updateStatus("Connection failed: " + str(e)))
     else:
       return False
 
@@ -190,7 +191,7 @@ class AirLatexSession:
         """
     self.log.debug("updateProjectList()")
     if self.authenticated:
-      anim_status = create_task(self.sidebar.animate("Loading Projects"))
+      anim_status = Task(self.sidebar.animate("Loading Projects"))
 
       get = lambda: self.httpHandler.get(
           self.url + "/project", allow_redirects=False)
@@ -212,12 +213,11 @@ class AirLatexSession:
         with tempfile.NamedTemporaryFile(delete=False) as f:
           f.write(projectPage.text.encode())
           self.authenticated = False
-          create_task(
-              self.sidebar.updateStatus(
-                  "Offline. Please Login. I saved the webpage '%s' I got under %s."
-                  % (self.url, f.name)))
-          self.nvim.async_call(self.sidebar.vimCursorSet, 6, 1)
-          create_task(self.sidebar.triggerRefresh())
+          Task(self.sidebar.updateStatus(
+                  f"Offline. Please Login. I saved the webpage '{self.url}' I"
+                  " got under {f.name}.")).then(self.sidebar.vimCursorSet, 6, 1,
+                                               vim=True)
+          Task(self.sidebar.triggerRefresh())
         return []
 
       try:
@@ -229,7 +229,7 @@ class AirLatexSession:
             'content="([^"]*)"',
             re.search('<meta\s[^>]*name="ol-user_id"[^>]*>',
                       projectPage.text)[0])[1]
-        create_task(self.sidebar.updateStatus("Online"))
+        Task(self.sidebar.updateStatus("Online"))
         self.log.debug(data)
 
         if legacy:
@@ -246,27 +246,27 @@ class AirLatexSession:
           self.log.debug("is NOT legacy")
           projects = data["projects"]
         self.projects = {p["id"]: p for p in projects}
-        create_task(self.sidebar.triggerRefresh())
+        Task(self.sidebar.triggerRefresh())
       except Exception as e:
 
         with tempfile.NamedTemporaryFile(delete=False) as f:
           f.write(projectPage.text.encode())
-          create_task(
+          Task(
               self.sidebar.updateStatus(
                   "Could not retrieve project list: %s. You can check the response page under: %s "
                   % (str(e), f.name)))
         self.log.debug(traceback.format_exc())
-        create_task(self.sidebar.triggerRefresh())
+        Task(self.sidebar.triggerRefresh())
 
   async def connectProject(self, project):
     """
         Initializing connection to a project.
         """
     if not self.authenticated:
-      create_task(self.sidebar.updateStatus("Not Authenticated to connect"))
+      Task(self.sidebar.updateStatus("Not Authenticated to connect"))
       return None
 
-    anim_status = create_task(
+    anim_status = Task(
         self.sidebar.animate("Connecting to Project"))
 
     get = lambda: self.httpHandler.get(
@@ -301,6 +301,6 @@ class AirLatexSession:
 
     # start connection
     anim_status.cancel()
-    create_task(self.sidebar.updateStatus("Connected"))
-    create_task(airlatexproject.start())
+    Task(self.sidebar.updateStatus("Connected"))
+    Task(airlatexproject.start())
     return airlatexproject
