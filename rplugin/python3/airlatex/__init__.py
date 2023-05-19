@@ -1,14 +1,13 @@
-import traceback
-import keyring
 import pynvim
-import platform
-from sys import version_info
 from airlatex.task import Task, AsyncDecorator
-from airlatex.sidebar import SideBar
 from airlatex.session import AirLatexSession
-from airlatex.commentbuffer import CommentBuffer
+
+# from airlatex.buffers import SideBar, CommentBuffer, DocumentBuffer
+from airlatex.sidebar import SideBar
+# from airlatex.commentbuffer import CommentBuffer
 from airlatex.documentbuffer import DocumentBuffer
-from airlatex.util import logging_settings, init_logger, __version__
+
+from airlatex.util import init_logger, Settings
 
 
 @pynvim.plugin
@@ -19,100 +18,55 @@ class AirLatex:
     self.nvim = nvim
     AsyncDecorator.nvim = nvim
 
-    self.servername = self.nvim.eval("v:servername")
-    self.sidebar = False
-    self.comments = False
-    self.session = False
+    self.sidebar = None
+    self.comments = None
+    self.session = None
+
     self.nvim.command("let g:AirLatexIsActive = 1")
+    self.settings = Settings(
+        wait_for=self.nvim.eval("g:AirLatexWebsocketTimeout"),
+        username=self.nvim.eval("g:AirLatexUsername"),
+        domain=self.nvim.eval("g:AirLatexDomain"),
+        https=self.nvim.eval("g:AirLatexUseHTTPS"),
+        insecure=self.nvim.eval("g:AirLatexAllowInsecure") == 1)
+
+    # initialize exception handling for asyncio
+    self.nvim.loop.set_exception_handler(self.asyncCatchException)
+
+    # update user settings for logging
+    self.log = init_logger(
+        self.nvim.eval("g:AirLatexLogLevel"),
+        self.nvim.eval("g:AirLatexLogFile"))
 
   def __del__(self):
     self.nvim.command("let g:AirLatexIsActive = 0")
 
   @pynvim.command('AirLatex', nargs=0, sync=True)
-  def openSidebar(self):
+  def startSession(self):
     if self.session:
       return
-
-    # update user settings for logging
-    logging_settings["level"] = self.nvim.eval("g:AirLatexLogLevel")
-    logging_settings["file"] = self.nvim.eval("g:AirLatexLogFile")
-    log = init_logger()
-    log.info("Starting AirLatex (Version %s)" % __version__)
-    log.info("System Info:")
-    log.info(
-        "  - Python Version: %i.%i" % (version_info.major, version_info.minor))
-    log.info("  - OS: %s (%s)" % (platform.system(), platform.release()))
-    self.log = log
-
-    # initialize exception handling for asyncio
-    self.nvim.loop.set_exception_handler(self.asyncCatchException)
 
     # initialize sidebar
     if not self.sidebar:
       self.sidebar = SideBar(self.nvim, self)
     self.sidebar.initGUI()
-    self.sidebar.hide()
+    # self.sidebar.hide()
 
-    # initialize comment buffer
-    if not self.comments:
-      self.comments = CommentBuffer(self.nvim, self)
-    self.comments.initGUI()
+    # # initialize comment buffer
+    # if not self.comments:
+    #   self.comments = CommentBuffer(self.nvim, self)
+    # self.comments.initGUI()
 
-    self.sidebar.show()
+    # # Show after prevents the buffers from gettin in each other's way.
+    # self.sidebar.show()
 
-    # ensure session to exist
-    DOMAIN = self.nvim.eval("g:AirLatexDomain")
-    https = self.nvim.eval("g:AirLatexUseHTTPS")
-    username = self.nvim.eval("g:AirLatexUsername")
-
-    # query credentials
-    if username.startswith("cookies"):
-      if not username[7:]:
-        self.nvim.command("call inputsave()")
-        self.nvim.command(
-            "let user_input = input(\"Cookie given '%s'.\nLogin in your browser & paste it here: \")"
-            % (DOMAIN))
-        self.nvim.command("call inputrestore()")
-        self.nvim.command(
-            "let g:AirLatexUsername='cookies:%s'" %
-            self.nvim.eval("user_input"))
-    else:
-      password = keyring.get_password("airlatex_" + DOMAIN, username)
-      while password is None:
-        self.nvim.command("call inputsave()")
-        self.nvim.command(
-            "let user_input = input(\"No Password found for '%s' and user '%s'.\nType it in to store it in keyring: \")"
-            % (DOMAIN, username))
-        self.nvim.command("call inputrestore()")
-        keyring.set_password(
-            "airlatex_" + DOMAIN, username, self.nvim.eval("user_input"))
-        password = keyring.get_password("airlatex_" + DOMAIN, username)
-    # connect
+    # Attempt connection and start
     try:
-      self.session = AirLatexSession(
-          DOMAIN,
-          self.servername,
-          self.sidebar,
-          self.comments,
-          self.nvim,
-          https=https)
-      Task(self.session.login())
+      self.session = AirLatexSession(self.sidebar, self.comments)
+      Task(self.session.start)
     except Exception as e:
       self.sidebar.log.error(str(e))
       self.nvim.out_write(str(e) + "\n")
-
-  @pynvim.command('AirLatexResetPassword', nargs=0, sync=True)
-  def resetPassword(self):
-    DOMAIN = self.nvim.eval("g:AirLatexDomain")
-    username = self.nvim.eval("g:AirLatexUsername")
-    keyring.delete_password("airlatex_" + DOMAIN, username)
-    self.nvim.command("call inputsave()")
-    self.nvim.command(
-        "let user_input = input(\"Resetting password for '%s' and user '%s'.\nType it in to store it in keyring: \")"
-        % (DOMAIN, username))
-    self.nvim.command("call inputrestore()")
-    keyring.set_password(
-        "airlatex_" + DOMAIN, username, self.nvim.eval("user_input"))
 
   @pynvim.function('AirLatex_SidebarRefresh', sync=False)
   def sidebarRefresh(self, args):
@@ -202,6 +156,7 @@ class AirLatex:
   def sidebarClose(self, args):
     if self.sidebar:
       self.session.cleanup()
+      self.comments = None
       self.sidebar = None
 
   @pynvim.function('AirLatex_WriteBuffer', sync=True)

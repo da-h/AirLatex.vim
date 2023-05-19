@@ -48,14 +48,6 @@ class _VimDecorator:
     raise Exception()
 
 
-class _AsyncClassDecorator(_VimDecorator):
-  nvim = None
-
-  def __init__(self, fn, *args):
-    self.fn = fn
-    self.args = args
-
-
 class AsyncDecorator(_VimDecorator):
   nvim = None
 

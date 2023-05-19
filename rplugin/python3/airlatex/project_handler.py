@@ -117,8 +117,7 @@ class AirLatexProject:
         self.ws.write_message(msg)
     except Exception as e:
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
-      await self.disconnect(
-          f"Send failed ({type(e).__name__}): {e}")
+      await self.disconnect(f"Send failed ({type(e).__name__}): {e}")
       raise
 
   async def sidebarMsg(self, msg):
@@ -157,9 +156,7 @@ class AirLatexProject:
             'x-csrf-token': self.csrf,
             'content-type': 'application/json'
         },
-        json={
-          "message": message
-        })
+        json={"message": message})
     response = (await self.session.nvim.loop.run_in_executor(None, post))
     try:
       assert response.status_code == 200, f"Bad status code {response.status_code}"
@@ -379,6 +376,7 @@ class AirLatexProject:
   # sendOps whenever events appear in queue
   # (is only called in constructor)
   async def sendOps_flush(self):
+
     async def dequeue(all_ops):
       document, content_hash, ops, track, close = await self.ops_queue.get()
       if close:
@@ -413,8 +411,7 @@ class AirLatexProject:
     except Exception as e:
       self.log.debug(traceback.format_exc())
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
-      await self.disconnect(
-          f"Op Failed: {e}")
+      await self.disconnect(f"Op Failed: {e}")
       raise
     self.log.debug("Queue Exited")
 
@@ -594,9 +591,9 @@ class AirLatexProject:
               thread = data["args"][0]
               if thread in self.pending_comments:
                 doc_id, count, content = self.pending_comments[thread]
-                fn = self.documents[doc_id]["buffer"].publishComment
-                self.log.debug(f"type {type(fn)} instance {isinstance(fn, T._VimDecorator)}")
-                Task(AsyncDecorator(fn), thread, count, content).next
+                Task(
+                    self.documents[doc_id]["buffer"].publishComment, thread,
+                    count, content).next
                 continue
 
             self.comments = await self.getComments()
@@ -705,8 +702,7 @@ class AirLatexProject:
     except Exception as e:
       self.log.debug(traceback.format_exc())
       await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
-      await self.disconnect(
-          f"WS loop Failed: {e}")
+      await self.disconnect(f"WS loop Failed: {e}")
       raise
     self.log.debug("WS Exited")
 

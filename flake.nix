@@ -13,11 +13,11 @@
 
         python = pkgs.python310.withPackages (ps: with ps; [
           # Python packages from PyPI
-          keyring
           tornado
           requests
           pynvim
           intervaltree
+          beautifulsoup4
         ]);
       in
       {

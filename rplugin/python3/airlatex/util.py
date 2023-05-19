@@ -2,26 +2,35 @@ import traceback
 import time
 import logging
 import traceback
-from logging import NOTSET
 import random
+import platform
+
+from sys import version_info
+
+from logging import NOTSET
 
 __version__ = "0.2"
 
+class Settings:
+  _instance = None
 
-# Generate a timstamp with a length of 13 numbers
-def _genTimeStamp():
-  t = time.time()
-  t = str(t)
-  t = t[:10] + t[11:]
-  while len(t) < 13:
-    t += "0"
-  return t
+  def __new__(cls, *args, **kwargs):
+      if not isinstance(cls._instance, cls):
+          cls._instance = super(Settings, cls).__new__(cls)
+          cls._instance.initialize(*args, **kwargs)
+      return cls._instance
+
+  def initialize(self, wait_for=0, username="", domain="", https=True,
+               insecure=False):
+    self.wait_for = wait_for
+    self.username = username
+    self.domain = domain
+    self.https = https
+    self.insecure = insecure
+    self.url = ("https://" if https else "http://") + domain
 
 
 # get logging
-logging_settings = {"level": "NOTSET", "file": "AirLatex.log", "gui": True}
-
-
 class CustomLogRecord(logging.LogRecord):
 
   def __init__(self, *args, **kwargs):
@@ -30,24 +39,8 @@ class CustomLogRecord(logging.LogRecord):
     self.origin = f"{time.time()} | {self.filename} / {self.funcName} #{self.lineno:<4}"
 
 
-def init_logger():
+def init_logger(level, file):
   log = logging.getLogger("AirLatex")
-
-  # user settings
-  level = logging_settings["level"]
-  file = logging_settings["file"]
-
-  # gui related logging
-  DEBUG_LEVEL_GUI = 9
-  logging.addLevelName(DEBUG_LEVEL_GUI, "DEBUG_GUI")
-
-  def debug_gui(self, message, *args, **kws):
-    if self.isEnabledFor(DEBUG_LEVEL_GUI) and logging_settings["gui"]:
-      self._log(DEBUG_LEVEL_GUI, message, args, **kws)
-
-  logging.Logger.debug_gui = debug_gui
-  logging.DEBUG_GUI = DEBUG_LEVEL_GUI
-
   if level != "NOTSET":
 
     # formatter
@@ -62,6 +55,11 @@ def init_logger():
     log.addHandler(h)
     log.setLevel(getattr(logging, level))
 
+  log.info(
+      f"""Starting AirLatex (Version {__version__})
+  System Info:
+        - Python Version: {version_info.major}.{version_info.minor}
+        - OS: {platform.system()} ({platform.release()})""")
   return log
 
 
@@ -84,16 +82,27 @@ def generateCommentId(increment):
   return id
 
 
+# Generate a timstamp with a length of 13 numbers
+def _genTimeStamp():
+  t = time.time()
+  t = str(t)
+  t = t[:10] + t[11:]
+  while len(t) < 13:
+    t += "0"
+  return t
+
+
 def pynvimCatchException(fn, alt=None):
 
   def wrapped(self, *args, **kwargs):
     try:
       return fn(self, *args, **kwargs)
     except Exception as e:
-      self.status = f"Error: {e}. This is an unexpected Exception, thus stopping AirLatex. Please check the logfile & consider writing an issue to help improving the code."
+      self.log.debug(
+          f"Error: {e}. This is an unexpected Exception, "
+          "thus stopping AirLatex. Please check the logfile "
+          "& consider writing an issue to help improving the code.")
       self.log.debug(traceback.format_exc())
-      # self.updateStatusLine()
-
       if self.log.level == NOTSET:
         self.nvim.err_write(traceback.format_exc(e) + "\n")
       else:

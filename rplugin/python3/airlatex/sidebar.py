@@ -48,16 +48,28 @@ class SideBar:
     buffer_id = self.buffer.number
     return self.nvim.call('bufwinnr', buffer_id) != -1
 
-  async def animate(self, msg):
-    """
-    Performs a loading animation.
-    """
-    i = 0
-    while True:
-      s = " .." if i % 3 == 0 else ". ." if i % 3 == 1 else ".. "
-      await self.updateStatus(f"{s} {msg} {s}")
-      await sleep(0.1)
-      i += 1
+  def animation(parent, name):
+    class Animation:
+        def __enter__(self):
+            self.task = Task(self._animate(name))
+            return self.task
+
+        def __exit__(self, exc_type, exc_value, exc_traceback):
+            self.task.cancel()
+            if exc_type is not None:
+                parent.logger.debug(traceback.format_exc())
+                Task(parent.updateStatus(f"{name} failed: {exc_value}"))
+                return False
+            return True  # This prevents the exception from being re-raised
+
+        async def _animate(self, msg):
+          i = 0
+          while True:
+            s = " .." if i % 3 == 0 else ". ." if i % 3 == 1 else ".. "
+            await self.updateStatus(f"{s} {msg} {s}")
+            await sleep(0.1)
+            i += 1
+    return Animation()
 
   @AsyncDecorator
   @pynvimCatchException
