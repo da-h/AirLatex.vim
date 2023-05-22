@@ -1,15 +1,30 @@
 from time import gmtime, strftime
 
-from airlatex.task import AsyncDecorator, Task
-from airlatex.buffers.buffers import ActiveMenuBuffer
-from airlatex.lib import pynvimCatchException
-from airlatex import __version__
+from airlatex.lib.task import AsyncDecorator, Task
+from airlatex.lib.exceptions import pynvimCatchException
+
+from airlatex.buffers.menu import ActiveMenuBuffer
+from airlatex.lib.animation import Basic as Animation
+from airlatex.lib.exceptions import pynvimCatchException
+from airlatex.lib.settings import __version__
 
 
 class Sidebar(ActiveMenuBuffer):
 
-  def __init__(self, nvim):
-    super().__init__(nvim)
+  def __init__(self, nvim, session):
+    super().__init__(
+        nvim,
+        actions={
+            'File': ['name', 'size'],
+            'Folder': ['name'],
+            'Project': ['handler'],
+            'Actions': {
+                'Retry': [],
+                'Disconnect': []
+            }
+        })
+
+    self.session = session
 
     self.symbol_open = self.nvim.eval("g:AirLatexArrowOpen")
     self.symbol_closed = self.nvim.eval("g:AirLatexArrowClosed")
@@ -20,7 +35,7 @@ class Sidebar(ActiveMenuBuffer):
   def buildBuffer(self):
     # Make the window
     self.command(
-    """
+        """
       let splitSize = g:AirLatexWinSize
       let splitLocation = g:AirLatexWinPos ==# "left" ? "topleft " : "botright "
       exec splitLocation . 'vertical ' . splitSize . ' new'
@@ -29,7 +44,8 @@ class Sidebar(ActiveMenuBuffer):
     buffer = self.nvim.current.buffer
 
     # throwaway buffer options (thanks NERDTree)
-    self.command("""
+    self.command(
+        """
       file AirLatex
       setlocal winfixwidth
       setlocal noswapfile
@@ -50,7 +66,8 @@ class Sidebar(ActiveMenuBuffer):
     # self.nvim.command('setlocal nomodifiable')
 
     # Register Mappings
-    self.command("""
+    self.command(
+        """
       nnoremap <silent> <buffer> q :q <enter>
       nnoremap <silent> <buffer> <up> <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
       nnoremap <silent> <buffer> k <up> <bar> :call AirLatex_SidebarRefresh() <enter> <bar> <right>
@@ -74,7 +91,8 @@ class Sidebar(ActiveMenuBuffer):
       projectList = []
       self.status = "Starting Session"
 
-    menu = Menu(title="",)
+    size = self.nvim.eval("g:AirLatexWinSize")
+    menu = self.menu.clear(f"AirLatex (ver {__version__})", size)
 
     # Display all Projects
     for i, project in enumerate(projectList):
@@ -90,31 +108,39 @@ class Sidebar(ActiveMenuBuffer):
 
       # list project structure
       if project.get("open"):
-        menu.add_entry(" {self.symbol_open} {project['name']}", project)
+        menu.add_entry(
+            " {self.symbol_open} {project['name']}", project,
+            menu.Item.Project(project))
         for folder in project.get("rootFolder", [None]):
-          self._listProjectStructure(folder, pos)
+          self._listProjectStructure(folder, pos, menu)
       else:
-        menu.add_entry(" {self.symbol_closed} {project['name']}", project)
+        menu.add_entry(
+            " {self.symbol_closed} {project['name']}",
+            menu.Item.Project(project))
 
-      menu = Menu(title="Title")
-      menu.add_entry(" {self.symbol_closed} {project['name']}",
-                     MenuItem.Actions.Disconnect())
-      menu.from_dicitionary(
-          keys=[("open", "-----------------"),
-                ("msg", "Status: {}"),
-                ("await", "Await: {}"),
-                ("source", "Source: {}"),
-                ("owner", "Owner {firstname}, {lastname}"), # Owner is a dictionary
-                ("lastUpdated", "{}"),
-                (("firstName", "lastName"), "User: {} {}")],
+      menu.from_dictionary(
+          keys=[
+              ("open", "-----------------"),
+              ("msg", "Status: {}"),
+              ("await", "Await: {}"),
+              ("source", "Source: {}"),
+              # Owner is a dictionary
+              ("owner", "Owner {firstName}, {lastName}"),
+              ("lastUpdated", "{}"),
+              (("firstName", "lastName"), "User: {} {}")
+          ],
           data=project)
 
     # Info
     menu.space(3)
-    menu.add_bulk((" Retry       : enter", ["retry"]),
-    (" Status      : %s" % self.status, ["status"]),
-    (" Last Update : " + strftime("%H:%M:%S", gmtime()), ["lastupdate"]),
-    menu.add_entry(" Quit All    : enter", ["disconnect"]))
+    menu.from_dictionary(
+        keys=[
+            (" Retry       : enter",),
+            ("status", f" Status      : {self.status}",),
+            (f" Last Update : {strftime('%H:%M:%S', gmtime())}",),
+            (" Quit All    : enter",)
+        ],
+        data={})
 
     if self.lock.locked():
       self.lock.release()
@@ -129,7 +155,8 @@ class Sidebar(ActiveMenuBuffer):
       folder["type"] = "folder"
       if "open" in folder and folder["open"]:
         menu.add_entry(f"{self.symbol_open} {folder['name']}", indent=indent)
-        self._listProjectStructure(folder, pos + [folder], menu, indent = indent + 1)
+        self._listProjectStructure(
+            folder, pos + [folder], menu, indent=indent + 1)
       else:
         menu.add_entry(f"{self.symbol_closed} {folder['name']}", indent=indent)
 
@@ -149,21 +176,21 @@ class Sidebar(ActiveMenuBuffer):
 
     @handle(MenuItem.Actions.Disconnect)
     def disconnect():
-      if self.airlatex.session:
-        self.airlatex.session.cleanup()
+      if self.session:
+        self.session.cleanup()
 
     @handle(Actions.Retry)
     def retry():
-      if self.airlatex.session:
-        Task(self.airlatex.session.login())
+      if self.session:
+        Task(self.session.login())
 
-    @handle(Project)
+    @handle(Project, "enter")
     def open(project):
       if "handler" in project:
         self._toggle(self.cursorPos[-1], "open", default=False)
       else:
         self.log.debug(f"connecting {project}")
-        Task(self.airlatex.session.connectProject(project))
+        Task(self.airlatex.connectProject(project))
 
     @handle(Project, "del")
     def close(project):
@@ -173,7 +200,7 @@ class Sidebar(ActiveMenuBuffer):
         # different implications for being True, False and None. We set it
         # back to None here such that it can properly be set later.
         if project.get("connected"):
-          @Task(project["handler"].disconnect).fn()
+          # @Task(project["handler"].disconnect).fn()
           async def del_connect(*args):
             if "connected" in project:
               del project["connected"]
@@ -185,19 +212,20 @@ class Sidebar(ActiveMenuBuffer):
 
     @handle(File)
     def join(document):
-      name = DocumentBuffer.getName(document.file)
-      for buffer, document in DocumentBuffer.allBuffers.items():
+      name = Document.getName(document.file)
+      for buffer, document in Document.allBuffers.items():
         self.log.debug(f"{name} vs {document.name}")
         if name == document.name:
           self.command('wincmd w')
           self.command(f'buffer {buffer.number}')
           return
-      Task(document.party.joinDocument(document.file))
+      Task(document.project.joinDocument(document.file))
 
-  def animation(self, name):
-    return Animation(self.updateStatus, name)
+  def animation(self, name, loop=0.1):
+    return Animation(name, self.updateStatus, loop=loop)
 
   async def updateStatus(self, msg):
     await self.lock.acquire()
     self.status = msg
-    return Task(self.updateStatusLine)
+    return Task(self.menu.updateEntryByKey, "status",
+                self.status).then(self.lock.release)

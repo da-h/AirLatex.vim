@@ -2,21 +2,20 @@ import html
 import requests
 import json
 
-from airlatex.task import Task
-from airlatex.project_handler import AirLatexProject
-from airlatex.utils.connection import WebPage
+from airlatex.project import AirLatexProject
+from airlatex.buffers import Sidebar, Comments
 
-from airlatex.util import _genTimeStamp, Settings
+from airlatex.lib.task import Task
+from airlatex.lib.connection import WebPage
+from airlatex.lib.uuid import generateTimeStamp
+from airlatex.lib.settings import Settings
 
 from logging import getLogger
 
 
 class AirLatexSession:
 
-  def __init__(self, sidebar, comments, https=True, username=None):
-    self.sidebar = sidebar
-    self.comments = comments
-
+  def __init__(self, nvim):
     self.log = getLogger("AirLatex")
     self.settings = Settings()
 
@@ -26,6 +25,14 @@ class AirLatexSession:
     self.projects = {}
     self.project_data = {}
     self.authenticated = False
+
+    # initialize sidebar
+    self.sidebar = Sidebar(nvim, self)
+    self.sidebar.hide()
+
+    self.comments = Comments(nvim)
+    # Show after prevents the buffers from gettin in each other's way.
+    self.sidebar.show()
 
   @property
   def cookies(self):
@@ -120,10 +127,10 @@ class AirLatexSession:
 
   async def start(self, msg="Disconnected"):
     self.authenticated = await self._checkLogin()
-    self.projects = await self._buildProjectList(force=True)
+    self.project_data = await self._buildProjectList(force=True)
     Task(self.sidebar.triggerRefresh())
 
-  def cleanup(self, msg="Disconnected"):
+  async def cleanup(self, msg="Disconnected"):
     """Disconnects all connected AirLatexProjects."""
     for project in self.projects.values():
       Task(project.disconnect())

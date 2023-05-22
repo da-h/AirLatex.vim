@@ -1,14 +1,21 @@
 from time import gmtime, strftime
 
-from airlatex.task import Task, AsyncDecorator
-from airlatex.buffers.buffers import PassiveMenuBuffer
-from airlatex.util import pynvimCatchException, generateCommentId
+from airlatex.buffers.menu import PassiveMenuBuffer
+
+from airlatex.lib.exceptions import pynvimCatchException
+from airlatex.lib.uuid import generateCommentId
+from airlatex.lib.task import Task, AsyncDecorator
 
 
 class Comments(PassiveMenuBuffer):
 
   def __init__(self, nvim):
-    super().__init__(nvim)
+    super().__init__(
+        nvim,
+        actions={
+          "Resolve":[],
+          "Unresolve":[]
+      })
     self.log.debug("Threads / Comments initialized.")
 
     self.project = None
@@ -28,7 +35,8 @@ class Comments(PassiveMenuBuffer):
   @pynvimCatchException
   def buildBuffer(self):
 
-    self.command("""
+    self.command(
+        """
         let splitLocation = g:AirLatexWinPos ==# "left" ? "botright " : "topleft "
         let splitSize = g:AirLatexWinSize
         silent! exec splitLocation . 'vertical ' . splitSize . ' new'
@@ -37,7 +45,8 @@ class Comments(PassiveMenuBuffer):
 
     buffer = self.nvim.current.buffer
 
-    self.command("""
+    self.command(
+        """
         file AirLatexComments
         setlocal winfixwidth
         syntax clear
@@ -57,7 +66,8 @@ class Comments(PassiveMenuBuffer):
         setlocal filetype=airlatexcomment
     """)
 
-    self.command("""
+    self.command(
+        """
         nnoremap <buffer> <C-n> :call AirLatex_NextComment()<enter>
         nnoremap <buffer> <C-p> :call AirLatex_PrevComment()<enter>
         nnoremap <buffer> <enter> :call AirLatex_CommentEnter()<enter>
@@ -66,7 +76,6 @@ class Comments(PassiveMenuBuffer):
         nnoremap <buffer> ZQ :call AirLatex_FinishDraft(0)<enter>
     """)
     return buffer
-
 
   @pynvimCatchException
   def render(self, project, threads):
@@ -117,7 +126,7 @@ class Comments(PassiveMenuBuffer):
       indicator = f" ({self.index + 1} / {len(self.threads)})"
 
     # Display Header
-    menu = Menu(title=f"Comments{indicator}", size=size)
+    menu = menu.clear(title=f"Comments{indicator}", size=size)
 
     if thread.get("resolved", False):
       menu.add_entry(f"!! Resolved")
@@ -131,12 +140,10 @@ class Comments(PassiveMenuBuffer):
       content = message['content']
       timestamp = message['timestamp']
       # Convert timestamp to a short date format
-      short_date = strftime(
-          "%m/%d/%y %H:%M", gmtime(timestamp / 1000))
+      short_date = strftime("%m/%d/%y %H:%M", gmtime(timestamp / 1000))
 
       # block is pretty heavily coupled with comment, but that's ok.
-      menu.add_block(headers=[user, short_date],
-                     content=content)
+      menu.add_block(headers=[user, short_date], content=content)
 
     if thread.get("resolved", False):
       menu.add_entry(f" » reopen{' ' * (size - 4 - 7)}⬃⬃")
@@ -250,7 +257,8 @@ class Comments(PassiveMenuBuffer):
       return
     if not self.drafting:
       p = lambda S: [s.rstrip() for s in S.split("\n")]
-      self.buffer[:] = p("""
+      self.buffer[:] = p(
+          """
       #
       # Drafting comment.
       # Lines starting with '#' will be ignored.

@@ -1,9 +1,10 @@
-from asyncio import Lock, sleep
+from asyncio import Lock
 from abc import ABC, abstractmethod
 
-from airlatex.task import AsyncDecorator, Task
+from airlatex.lib.task import Task
 
 from logging import getLogger
+
 
 class Buffer(ABC):
 
@@ -13,6 +14,7 @@ class Buffer(ABC):
     self.buffer = None
     self.log = getLogger("AirLatex")
     self.lock = Lock()
+    self.initialize()
 
   @property
   def visible(self):
@@ -28,33 +30,8 @@ class Buffer(ABC):
 
   def initialize(self):
     self.buffer = self.buildBuffer()
-    return Task(self.lock.acquire).then(self.render)
+    return Task(self.lock.acquire).then(self._render)
 
   @abstractmethod
   def buildBuffer(self, *args, **kwargs):
     pass
-
-class Animation():
-  def __init__(self, name, callback):
-    self.name = name
-    self.callback = callback
-
-  def __enter__(self):
-    self.task = Task(self._animate(self.name))
-    return self.task
-
-  def __exit__(self, exc_type, exc_value, exc_traceback):
-    self.task.cancel()
-    if exc_type is not None:
-      getLogger("AirLatex").debug(traceback.format_exc())
-      Task(self.callback.updateStatus(f"{self.name} failed: {exc_value}"))
-      return False
-    return True  # This prevents the exception from being re-raised
-
-  async def _animate(self, msg):
-    i = 0
-    while True:
-      s = " .." if i % 3 == 0 else ". ." if i % 3 == 1 else ".. "
-      await self.callback(f"{s} {msg} {s}")
-      await sleep(0.1)
-      i += 1

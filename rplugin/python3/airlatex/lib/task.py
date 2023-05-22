@@ -10,13 +10,14 @@ import inspect
 from asyncio import create_task, Queue
 import functools
 import inspect
+import traceback
 
 
 # For ambiguos number of parameters / response
 def _call(fn, result, args=None):
   result = _args(result, args)
   with open('args.txt', 'a') as f:
-    print(f"result {result}", file=f)
+    print(f"result {result} {args}", file=f)
   if result is None:
     return fn()
   elif isinstance(result, tuple):
@@ -71,8 +72,11 @@ class AsyncDecorator(_VimDecorator):
 
     return callback
 
-  def __get__(self, instance, _):
+  def __get__(self, instance, cls):
     """Required to support class instances"""
+    # Some type of static or meta call is goint on.
+    if not instance:
+      return cls.__bases__[0].__get__(None, None, cls)
     if self.recurse:
       return self
     self.recurse = True
@@ -144,7 +148,7 @@ class Task():
 
     async def callback():
       result = await self.channel.get()
-      return await _call(fn, result)
+      return _call(fn, result)
 
     return callback
 

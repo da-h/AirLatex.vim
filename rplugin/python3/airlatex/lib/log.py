@@ -4,6 +4,8 @@ import logging
 import platform
 from sys import version_info
 from logging import NOTSET
+from airlatex.lib.settings import __version__
+
 
 # get logging
 class CustomLogRecord(logging.LogRecord):
@@ -36,4 +38,3 @@ def init_logger(level, file):
         - Python Version: {version_info.major}.{version_info.minor}
         - OS: {platform.system()} ({platform.release()})""")
   return log
-

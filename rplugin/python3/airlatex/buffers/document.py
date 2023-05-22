@@ -1,147 +1,60 @@
-import sys
-
-import pynvim
+from collections import namedtuple
+from copy import deepcopy
 from difflib import SequenceMatcher
-from hashlib import sha1
-import asyncio
-from asyncio import Lock
-from logging import getLogger
+from hashlib import sha1, md5
 import time
 
 from intervaltree import Interval, IntervalTree
-from airlatex.range import FenwickTree, NaiveAccumulator
 
-from copy import deepcopy
-
-from airlatex.task import AsyncDecorator, Task
-
-import hashlib
+from airlatex.lib.range import FenwickTree, NaiveAccumulator
+from airlatex.lib.task import AsyncDecorator, Task
+from airlatex.buffers.buffer import Buffer
 
 if "allBuffers" not in globals():
   allBuffers = {}
 
+highlight_groups = [
+    'AirLatexCommentGroup', 'AirLatexDoubleCommentGroup', 'PendingCommentGroup'
+]
+highlight = namedtuple("Highlight", ["comment", "double", "pending"])
 
-class DocumentBuffer:
+
+class Document(Buffer):
   allBuffers = allBuffers
 
-  def __init__(self, path, nvim, new_buffer=True):
+  def __init__(self, nvim, project, data, new_buffer=True):
+    super().__init__(nvim)
+
     self.comments_active = True
     self.comments_display = True
     self.nonce = f"{time.time()}"
-    self.log = getLogger("AirLatex")
-    self.path = path
-    self.nvim = nvim
-    self.project_handler = path[0]["handler"]
-    self.document = path[-1]
+
+    self.data = data[-1]
+    self.name = Document.getName(data)
+    self.ext = Document.getExt(self.document)
+
+    self.project = project
+
     self.saved_buffer = None
     self.threads = {}
-    self.highlight = self.nvim.api.create_namespace('AirLatexCommentGroup')
-    self.highlight2 = self.nvim.api.create_namespace(
-        'AirLatexDoubleCommentGroup')
-    self.pending_selection = self.nvim.api.create_namespace(
-        'PendingCommentGroup')
+
+    self.highlight_names = highlight(*highlight_groups)
+    self.highlights = highlight(
+        *map(self.nvim.api.create_namespace, highlight_groups))
+
     self.comment_selection = IntervalTree()
     self.thread_intervals = IntervalTree()
     self.buffer_event = asyncio.Event()
     self.cursors = {}
-    self.buffer_mutex = Lock()
+
     # self.cumulative_lines = FenwickTree()
     self.cumulative_lines = NaiveAccumulator()
 
-    self.initDocumentBuffer(new_buffer)
-
-  def command(self, cmd):
-    for c in cmd.split("\n"):
-      self.nvim.command(c.strip())
-
-  """
-  def cummulativePosition(self):
-    # TODO: make a cached linked list that updates with changes
-    pos = [0]
-    for row in self.buffer[:]:
-      pos.append(pos[-1] + len(row) + 1)
-    return pos
-
-  def getPosition(self, row, col):
-    return self.cummulativePosition()[row] + col
-  """
-
-  @staticmethod
-  def getName(path):
-    return "/".join([p["name"] for p in path])
-
-  @staticmethod
-  def getExt(document):
-    return document["name"].split(".")[-1]
-
-  def buildContentHash(self, cumulative_lines=None):
-    # compute sha1-hash of current buffer
-    if cumulative_lines == None:
-      cumulative_lines = self.cumulative_lines
-    # compute sha1-hash of current buffer
-    buffer_cpy = self.saved_buffer[:]
-    current_len = 0
-    for i, row in enumerate(buffer_cpy):
-      self.log.debug(f"{current_len, self.cumulative_lines[i]}")
-      current_len += len(row) + 1
-    current_len -= 1
-    tohash = ("blob " + str(current_len) + "\x00")
-    self.log.debug(f"Lengths {current_len, self.cumulative_lines[-1]}")
-
-    # current_len = self.cumulative_lines[-1]
-    tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
-    sha = sha1()
-    sha.update(tohash.encode())
-    return sha.hexdigest()
-
-  @property
-  def name(self):
-    return DocumentBuffer.getName(self.path)
-
-  @property
-  def ext(self):
-    return DocumentBuffer.getExt(self.document)
-
-  @property
-  def augroup(self):
-    "Need a file unique string. Could use docid I guess."
-    return "x" + hashlib.md5((self.name + self.nonce).encode('utf-8')).hexdigest()
-
-  async def deactivate(self):
-    await self.buffer_mutex.acquire()
-    if self.buffer not in DocumentBuffer.allBuffers:
-      return
-    del DocumentBuffer.allBuffers[self.buffer]
-
-    @Task.Fn(vim=True)
-    def callback():
-      # Changing the name breaks vimtex.
-      try:
-        self.buffer.name = f"Offline {self.augroup}"
-      except:
-        pass
-
-      try:
-        buffer = self.nvim.current.buffer
-        self.buffer.api.clear_namespace(self.highlight, 0, -1)
-        self.buffer.api.clear_namespace(self.highlight2, 0, -1)
-        # Turn off syntax to emphasize we are offline
-        # Delete key bindings
-        # Add new keybinding to refresh
-        self.command(f"""
-          buffer {self.buffer.number}
-          autocmd! {self.augroup}
-          set syntax=off
-          buffer {buffer.number}
-        """)
-        self.thread_intervals.clear()
-      finally:
-        self.buffer_mutex.release()
-
-  def initDocumentBuffer(self, new_buffer):
+  def buildBuffer(self, new_buffer):
 
     if new_buffer:
-      self.nvim.command(f"""
+      self.nvim.command(
+          f"""
         wincmd w
         enew
         file {self.name}
@@ -150,11 +63,12 @@ class DocumentBuffer:
       # Reuse the current buffer
       self.nvim.command(f"file {self.name}")
 
-    self.buffer = self.nvim.current.buffer
-    DocumentBuffer.allBuffers[self.buffer] = self
+    buffer = self.nvim.current.buffer
+    Document.allBuffers[buffer] = self
 
     # Buffer Settings
-    self.nvim.command(f"""
+    self.command(
+        f"""
       syntax on
       setlocal noswapfile
       setlocal buftype=nofile
@@ -162,7 +76,8 @@ class DocumentBuffer:
     """)
 
     # Autogroups
-    self.nvim.command(f"""
+    self.command(
+        f"""
     augroup {self.augroup}
       au CursorMoved <buffer> call AirLatex_MoveCursor()
       au CursorMovedI <buffer> call AirLatex_WriteBuffer()
@@ -174,7 +89,8 @@ class DocumentBuffer:
     # Buffer bindings
     pid = self.project_handler.project["id"]
     did = self.document["_id"]
-    self.nvim.command(f"""
+    self.command(
+        f"""
       vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>
       nnoremap <buffer> R :call AirLatex_Refresh('{pid}', '{did}')<enter>
       cmap <buffer> w call AirLatex_GitSync(input('Commit Message: '))<CR>
@@ -183,12 +99,14 @@ class DocumentBuffer:
     """)
 
     # Comment formatting
-    self.nvim.command(f"""
-      hi PendingCommentGroup ctermbg=190
-      hi AirLatexCommentGroup ctermbg=58
-      hi AirLatexDoubleCommentGroup ctermbg=94
+    self.nvim.command(
+        f"""
+      hi {self.highlight_names.comment} ctermbg=190
+      hi {self.highlight_names.pending} ctermbg=58
+      hi {self.highlight_names.double} ctermbg=94
       hi CursorGroup ctermbg=18
     """)
+    return buffer
 
   def syncGit(self, message=None):
     while not message:
@@ -209,6 +127,71 @@ class DocumentBuffer:
         self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
       self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
 
+  @staticmethod
+  def getName(path):
+    return "/".join([p["name"] for p in path])
+
+  @staticmethod
+  def getExt(document):
+    return document["name"].split(".")[-1]
+
+  @property
+  def augroup(self):
+    "Need a file unique string. Could use docid I guess."
+    return "x" + md5((self.name + self.nonce).encode('utf-8')).hexdigest()
+
+  @property
+  def content_hash(self):
+    # compute sha1-hash of current buffer
+    cumulative_lines = self.cumulative_lines
+    # compute sha1-hash of current buffer
+    buffer_cpy = self.saved_buffer[:]
+    current_len = 0
+    for i, row in enumerate(buffer_cpy):
+      self.log.debug(f"{current_len, self.cumulative_lines[i]}")
+      current_len += len(row) + 1
+    current_len -= 1
+    tohash = ("blob " + str(current_len) + "\x00")
+    self.log.debug(f"Lengths {current_len, self.cumulative_lines[-1]}")
+
+    # current_len = self.cumulative_lines[-1]
+    tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
+    sha = sha1()
+    sha.update(tohash.encode())
+    return sha.hexdigest()
+
+  async def deactivate(self):
+    await self.lock.acquire()
+    if self.buffer not in Document.allBuffers:
+      return
+    del Document.allBuffers[self.buffer]
+
+    @Task.Fn(vim=True)
+    def callback():
+      # Changing the name breaks vimtex.
+      try:
+        self.buffer.name = f"Offline {self.augroup}"
+      except:
+        pass
+
+      try:
+        buffer = self.nvim.current.buffer
+        self.buffer.api.clear_namespace(self.highlight.comment, 0, -1)
+        self.buffer.api.clear_namespace(self.highlight.double, 0, -1)
+        # Turn off syntax to emphasize we are offline
+        # Delete key bindings
+        # Add new keybinding to refresh
+        self.command(
+            f"""
+          buffer {self.buffer.number}
+          autocmd! {self.augroup}
+          set syntax=off
+          buffer {buffer.number}
+        """)
+        self.thread_intervals.clear()
+      finally:
+        self.lock.release()
+
   def markComment(self, *lineinfo):
     if self.comment_selection.is_empty():
       self.comment_selection = IntervalTree()
@@ -219,7 +202,7 @@ class DocumentBuffer:
               self.cumulative_lines.position(end_line, end_col)))
 
       self.highlightRange(
-          self.pending_selection, "PendingCommentGroup", *lineinfo)
+          self.highlight.pending, self.highlight_names.pending, *lineinfo)
 
   def getCommentPosition(self, next: bool = False, prev: bool = False):
     if next == prev:
@@ -260,7 +243,7 @@ class DocumentBuffer:
     # Yes, we call document, just to call back because we to get buffer info.
     return self.project_handler.sendOps(
         self.document,
-        self.buildContentHash(),
+        self.content_hash,
         ops=[{
             "c": content,
             "p": count,
@@ -282,8 +265,9 @@ class DocumentBuffer:
     char_count, start_line, start_col, end_line, end_col = self.getLineInfo(
         start, end)
     # Apply the highlight
-    self.log.debug(f"highlight {start_line} {start_col} {end_line} {end_col} |"
-                   f"{start, end}")
+    self.log.debug(
+        f"highlight {start_line} {start_col} {end_line} {end_col} |"
+        f"{start, end}")
 
     if start == end:
       start -= 1
@@ -293,8 +277,8 @@ class DocumentBuffer:
           end_col + 1, char_count + self.cumulative_lines[end_line] - 1)
 
     self.highlightRange(
-        self.highlight, 'AirLatexCommentGroup', start_line, start_col, end_line,
-        end_col)
+        self.highlight.comment, self.highlight_names.comment, start_line,
+        start_col, end_line, end_col)
     self.thread_intervals[start:end] = thread_id
 
   async def highlightComments(self, comments, threads=None):
@@ -323,22 +307,30 @@ class DocumentBuffer:
       for overlap in overlapping_ranges:
         _, *lineinfo = self.getLineInfo(overlap.begin, overlap.end)
         self.highlightRange(
-            self.highlight2, 'AirLatexDoubleCommentGroup', *lineinfo)
+            self.highlight.double, self.highlight_names.double, *lineinfo)
 
   async def showComments(self, cursor, comment_buffer):
     previous_state = self.comments_active
-    self.comments_display = not (comment_buffer.drafting or
-                                comment_buffer.creation)
+    self.comments_display = not (
+        comment_buffer.drafting or comment_buffer.creation)
     if not self.comments_display:
       return
     if not previous_state:
-      Task(self.buffer.api.clear_namespace, self.pending_selection, 0, -1,
-           vim=True)
+      Task(
+          self.buffer.api.clear_namespace,
+          self.highlight.pending,
+          0,
+          -1,
+          vim=True)
       self.comment_selection = IntervalTree()
 
     cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
-    self.log.debug(f"Show comments {cursor}, {cursor_offset}, {[t for t in self.thread_intervals]}")
-    self.log.debug(f"Sanity {[self.cumulative_lines[i] for i in range(cursor[0])]} {self.cumulative_lines.arr} ")
+    self.log.debug(
+        f"Show comments {cursor}, {cursor_offset}, {[t for t in self.thread_intervals]}"
+    )
+    self.log.debug(
+        f"Sanity {[self.cumulative_lines[i] for i in range(cursor[0])]} {self.cumulative_lines.arr} "
+    )
 
     threads = self.thread_intervals[cursor_offset]
 
@@ -405,11 +397,13 @@ class DocumentBuffer:
 
   def write(self, lines):
 
-    @Task(self.buffer_mutex.acquire).fn(self.buffer, lines, vim=True)
+    @Task(self.lock.acquire).fn(self.buffer, lines, vim=True)
     def writeLines(buffer, lines):
       buffer[:] = []
       buffer[0] = lines[0]
-      lengths = [0,] * len(lines)
+      lengths = [
+          0,
+      ] * len(lines)
       lengths[0] = len(lines[0]) + 1
       for i, l in enumerate(lines[1:]):
         buffer.append(l)
@@ -418,18 +412,15 @@ class DocumentBuffer:
       lengths[-1] -= 1
       self.cumulative_lines.initialize(lengths)
       self.saved_buffer = buffer[:]
-      self.buffer_mutex.release()
+      self.lock.release()
       self.buffer_event.set()
-
 
   def writeBuffer(self, comments=None):
     self.log.debug("writeBuffer: calculating changes to send")
 
     # update CursorPosition
     cursor = self.nvim.current.window.cursor
-    Task(
-        self.project_handler.updateCursor(
-            self.document, cursor))
+    Task(self.project_handler.updateCursor(self.document, cursor))
 
     if comments:
       Task(self.showComments(cursor, comments))
@@ -504,7 +495,7 @@ class DocumentBuffer:
       elif op[0] == "replace":
         self.log.debug(f"replace")
         old = "\n".join(self.saved_buffer[op[1]:op[2]])
-        selection  = buffer[op[3]:op[4]]
+        selection = buffer[op[3]:op[4]]
         new = "\n".join(selection)
         # Since Sequence Matcher works in order, we need to use the indices on
         # the buffer.
@@ -549,7 +540,7 @@ class DocumentBuffer:
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
     Task(
         self.project_handler.sendOps(
-            self.document, self.buildContentHash(), ops, track))
+            self.document, self.content_hash, ops, track))
 
   def applyUpdate(self, packet, comments):
     self.log.debug("apply server updates to buffer")
@@ -566,7 +557,7 @@ class DocumentBuffer:
     ops = packet['op']
 
     # async execution
-    @Task(self.buffer_mutex.acquire).fn(self, ops, vim=True)
+    @Task(self.lock.acquire).fn(self, ops, vim=True)
     def applyOps(self, ops):
       try:
         for op in ops:
@@ -594,8 +585,7 @@ class DocumentBuffer:
       except Exception as e:
         self.log.debug(f"{op} failed: {e}")
       finally:
-        self.buffer_mutex.release()
-
+        self.lock.release()
 
   # inster string at given position
   def _insert(self, buffer, start, string):

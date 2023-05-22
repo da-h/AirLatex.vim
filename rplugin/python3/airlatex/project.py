@@ -1,24 +1,21 @@
-import sys
-import pynvim
-from tornado.ioloop import IOLoop, PeriodicCallback
 from tornado import gen
+from tornado.ioloop import IOLoop, PeriodicCallback
 from tornado.websocket import websocket_connect
-import re
-from itertools import count
-import json
-from airlatex.util import _genTimeStamp, generateId
-
-from airlatex.documentbuffer import DocumentBuffer
-import time
-from tornado.locks import Event
-from logging import DEBUG
 from tornado.httpclient import HTTPRequest
+from tornado.locks import Event
+
+import re
+import json
+from itertools import count
+
+from airlatex.lib.uuid import generateTimeStamp, generateId
+from airlatex.buffers.document import Document
+
 from asyncio import Queue, Lock, wait_for, TimeoutError
 from logging import getLogger
-import requests
 import traceback
 
-from airlatex.task import AsyncDecorator, Task
+from airlatex.lib.task import AsyncDecorator, Task
 
 from datetime import datetime
 
@@ -359,11 +356,11 @@ class AirLatexProject:
         await wait_for(event.wait(), timeout=self.wait_for)
       except TimeoutError:
         await self.disconnect(
-            "Error: The server did not answer for %d seconds." % self.wait_for)
+            f"Error: The server did not answer for {self.wait_for} seconds.")
     await self.gui_await(False)
     self.log.debug(
-        " -> Waiting for server to accept changes to document %s (ver %i)-> done"
-        % (document["_id"], document["version"]))
+        f" -> Waiting for server to accept changes to document {document['_id']} (ver {document['version']})-> done"
+    )
 
   # sendOps whenever events appear in queue
   # (is only called in constructor)
@@ -449,7 +446,7 @@ class AirLatexProject:
     # Intention disconnet
     if msg == "Disconnected.":
       msg = "Online"
-      if doc and len(DocumentBuffer.allBuffers) > 0:
+      if doc and len(Document.allBuffers) > 0:
         msg = "Connected"
     Task(self.sidebar.updateStatus(msg))
 
