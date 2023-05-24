@@ -53,7 +53,6 @@ class AirLatexProject:
     self.refresh(url, project, csrf, cookie)
 
     # Default unchanging
-    self.sidebar = session.sidebar
     self.session = session
 
     self.wait_for = wait_for if str(wait_for).isnumeric() else None
@@ -65,7 +64,7 @@ class AirLatexProject:
 
   def refresh(self, url, project, csrf, cookie=None):
     self.url = url
-    self.project = project
+    self.data = project
     self.cookie = cookie
     self.csrf = csrf
 
@@ -101,204 +100,43 @@ class AirLatexProject:
           message, dict) else message
       message["event"] = event
       if message_type == "update":
-        self.log.debug("Sending update: " + message_content)
-        self.ws.write_message("5:::" + message_content)
+        self.log.debug(f"Sending update: {message_content}")
+        self.ws.write_message(f"5:::{message_content}")
       elif message_type == "cmd":
         cmd_id = next(self.command_counter)
-        msg = "5:" + str(cmd_id) + "+::" + message_content
-        self.log.debug("Sendng cmd: " + msg)
+        msg = f"5:{cmd_id}+::{message_content}"
+        self.log.debug("Sendng cmd: ", msg)
         self.requests[str(cmd_id)] = message
         self.ws.write_message(msg)
     except Exception as e:
-      await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.updateSidebar(error=e)
       await self.disconnect(f"Send failed ({type(e).__name__}): {e}")
       raise
 
-  async def sidebarMsg(self, msg):
-    self.log.debug_gui("sidebarMsg: %s" % msg)
-    self.project["msg"] = msg
-    await self.sidebar.triggerRefresh()
-
-  async def gui_await(self, waiting=True):
-    self.project["await"] = waiting
-    await self.sidebar.triggerRefresh()
+  async def updateSidebar(self, msg=None, error=None, waiting=None):
+    if error is not None:
+      await self.session.sidebar.updateStatus(
+          f"Error: {type(error).__name__}: {error}")
+    if msg is not None:
+      self.data["msg"] = msg
+    if waiting is not None:
+      self.data["await"] = waiting
+    await self.session.sidebar.triggerRefresh()
 
   async def bufferDo(self, doc_id, command, data):
+    # TODO remove bufferDO
     if doc_id in self.documents:
-      doc = self.documents[doc_id]
-      buf = doc["buffer"]
-      self.log.debug_gui("bufferDo cmd=" + command)
+      document = self.documents[doc_id]
       if command == "applyUpdate":
-        buf.applyUpdate(data, self.comments)
+        document.applyUpdate(data, self.comments)
       elif command == "write":
-        buf.write(data)
+        document.write(data)
       elif command == "updateRemoteCursor":
-        buf.updateRemoteCursor(data)
+        document.updateRemoteCursor(data)
       elif command == "clearRemoteCursor":
-        buf.clearRemoteCursor(data)
+        document.clearRemoteCursor(data)
       elif command == "highlightComments":
-        await buf.highlightComments(self.comments, data)
-
-  async def syncGit(self, message):
-    self.log.debug(f"Syncing. {str(self.project)}")
-    # https://www.overleaf.com/project/<project>/github-sync/merge
-    compile_url = f"{self.session.url}/project/{self.project['id']}/github-sync/merge"
-    post = lambda: self.session.httpHandler.post(
-        compile_url,
-        headers={
-            'Cookie': self.cookie,
-            'x-csrf-token': self.csrf,
-            'content-type': 'application/json'
-        },
-        json={"message": message})
-    response = (await self.session.nvim.loop.run_in_executor(None, post))
-    try:
-      assert response.status_code == 200, f"Bad status code {response.status_code}"
-      self.log.debug("Synced.")
-    except Exception as e:
-      self.log.debug(traceback.format_exc())
-      self.log.debug("\nError in sync:")
-      self.log.debug(f"{response.content}\n---\n{e}")
-
-  async def compile(self):
-    self.log.debug(f"Compiling. {str(self.project)}")
-    compile_url = f"{self.session.url}/project/{self.project['id']}/compile?enable_pdf_caching=true"
-    post = lambda: self.session.httpHandler.post(
-        compile_url,
-        headers={
-            'Cookie': self.cookie,
-            'x-csrf-token': self.csrf,
-            'content-type': 'application/json'
-        },
-        json={
-            "rootDoc_id": self.project["rootDoc_id"],
-            "draft": False,
-            "check": "silent",
-            "incrementalCompilesEnabled": True,
-            "stopOnFirstError": False
-        })
-    logger = self.log
-    response = (await self.session.nvim.loop.run_in_executor(None, post))
-
-    try:
-      data = response.json()
-      if data["status"] != "success":
-        raise Exception("No success in compiling. Something failed.")
-      logger.debug("Compiled.")
-    except Exception as e:
-      self.log.debug(traceback.format_exc())
-      logger.debug("\nCompilation response content:")
-      logger.debug(f"{response.content}\n---\n{e}")
-
-  async def adjustComment(
-      self, thread, state, content="", resolve_state=None, retract=False):
-    resolve_url = f"{self.session.url}/project/{self.project['id']}/thread/{thread}/{state}"
-    payload = {"_csrf": self.csrf}
-    if content:
-      payload["content"] = content
-    post = lambda: self.session.httpHandler.post(
-        resolve_url, headers={
-            'Cookie': self.cookie,
-        }, json=payload)
-    logger = self.log
-    response = (await self.session.nvim.loop.run_in_executor(None, post))
-    logger.debug(f"adjusting comment to {state}")
-    try:
-      assert response.status_code == 204, f"Bad status code {response.status_code}"
-      # We'll get a websocket confirmation, and handle it from there.
-      # Nothing else to do
-    except Exception as e:
-      self.log.debug(traceback.format_exc())
-      logger.debug("\n {state} response content:")
-      logger.debug(f"{response.content}\n---\n{e}")
-      if resolve_state is not None:
-        self.comments.get(thread, {})["resolved"] = resolve_state
-      if retract:
-        del self.comments[thread]
-
-  def resolveComment(self, thread):
-    self.comments.get(thread, {})["resolved"] = True
-    Task(self.adjustComment(thread, "resolve", resolve_state=False))
-
-  def reopenComment(self, thread):
-    self.comments.get(thread, {})["resolved"] = False
-    Task(self.adjustComment(thread, "reopen", resolve_state=True))
-
-  def replyComment(self, thread, content):
-    self.comments.get(thread, {}).get("messages", []).append(
-        {
-            "user": {
-                "first_name": "** (pending)"
-            },
-            "content": content,
-            "timestamp": datetime.now().timestamp()
-        })
-    Task(self.adjustComment(thread, "messages", content))
-
-  def createComment(self, thread, doc_id, content):
-    doc = self.documents[doc_id]["buffer"]
-    interval = doc.comment_selection[:].pop()
-    count = interval.begin
-    highlight = "\n".join(doc.buffer[:])[interval.begin:interval.end]
-    if not content or not highlight:
-      return
-    self.comments[thread] = {
-        "messages":
-            [
-                {
-                    "user": {
-                        "first_name": "** (pending)"
-                    },
-                    "content": content,
-                    "timestamp": datetime.now().timestamp()
-                }
-            ]
-    }
-    self.pending_comments[thread] = (doc_id, count, highlight)
-    Task(self.adjustComment(thread, "messages", content, retract=True))
-
-  async def getComments(self):
-    comment_url = f"{self.session.url}/project/{self.project['id']}/threads"
-    get = lambda: self.session.httpHandler.get(
-        comment_url, headers={
-            'Cookie': self.cookie,
-        })
-    logger = self.log
-    response = (await self.session.nvim.loop.run_in_executor(None, get))
-    try:
-      comments = response.json()
-      logger.debug("Got comments")
-      return comments
-    except Exception as e:
-      self.log.debug(traceback.format_exc())
-      logger.debug("\nComments response content:")
-      logger.debug(f"{response.content}\n---\n{e}")
-    Task(self.session.comments.markInvalid())
-    return None
-
-  async def clearRemoteCursor(self, session_id):
-    for document in self.documents:
-      await self.bufferDo(id, "clearRemoteCursor", session_id)
-
-  async def updateRemoteCursor(self, cursors):
-    for cursor in cursors:
-      if "row" in cursor and "column" in cursor and "doc_id" in cursor:
-        await self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
-
-  async def updateCursor(self, doc, pos):
-    event = Event()
-    await self.send(
-        "update", {
-            "name":
-                "clientTracking.updatePosition",
-            "args":
-                [{
-                    "doc_id": doc["_id"],
-                    "row": pos[0] - 1,
-                    "column": pos[1]
-                }]
-        },
-        event=event)
+        await document.highlightComments(self.comments, data)
 
   # wrapper for the ioloop
   async def sendOps(self, document, content_hash, ops=[], track=False):
@@ -308,27 +146,27 @@ class AirLatexProject:
   async def _sendOps(self, document, content_hash, ops=[], track=False):
 
     # append new ops to buffer
-    document["ops_buffer"] += ops
+    document.data["ops_buffer"] += ops
 
     # skip if nothing to do
-    if len(document["ops_buffer"]) == 0:
+    if len(document.data["ops_buffer"]) == 0:
       return
 
     # wait if awaiting server response
     event = Event()
-    await self.gui_await(True)
+    await self.updateSidebar(waiting=True)
 
     # clean buffer for next call
-    ops_buffer, document["ops_buffer"] = document["ops_buffer"], []
+    ops_buffer, document.data["ops_buffer"] = document.data["ops_buffer"], []
 
     # actually send operations
-    source = document["_id"]
+    source = document.id
 
     obj_to_send = {
-        "doc": document["_id"],
+        "doc": document.id,
         "op": ops_buffer,
-        "v": document["version"],
-        "lastV": document["version"] - 1,
+        "v": document.version,
+        "lastV": document.version - 1,
         "hash":
             content_hash  # overleaf/web: sends document hash (if it hasn't been sent in the last 5 seconds)
     }
@@ -338,15 +176,15 @@ class AirLatexProject:
 
     # notify server of local change
     self.log.debug(
-        "Sending %i changes to document %s (ver %i)." %
-        (len(ops_buffer), document["_id"], document["version"]))
+        f"Sending {len(ops_buffer)} changes to document {document.id}"
+        f" (ver {document.version}]).")
     await self.send(
         "cmd", {
             "name": "applyOtUpdate",
-            "args": [document["_id"], obj_to_send]
+            "args": [document.id, obj_to_send]
         },
         event=event)
-    self.log.debug(f"Sent {document['_id']}.")
+    self.log.debug(f"Sent {document.id}.")
 
     # server needs to answer before proceeding
     if self.wait_for is None:
@@ -357,9 +195,10 @@ class AirLatexProject:
       except TimeoutError:
         await self.disconnect(
             f"Error: The server did not answer for {self.wait_for} seconds.")
-    await self.gui_await(False)
+    await self.updateSidebar(waiting=False)
     self.log.debug(
-        f" -> Waiting for server to accept changes to document {document['_id']} (ver {document['version']})-> done"
+        f" -> Waiting for server to accept changes to document {document.id}"
+        f"(ver {document.version})-> done"
     )
 
   # sendOps whenever events appear in queue
@@ -367,60 +206,56 @@ class AirLatexProject:
   async def sendOps_flush(self):
 
     async def dequeue(all_ops):
-      document, content_hash, ops, track, close = await self.ops_queue.get()
+      document_id, content_hash, ops, track, close = await self.ops_queue.get()
+
       if close:
-        return close, ()
-      self.log.debug(f"Got Op {document, content_hash, ops}")
-      if document["_id"] not in all_ops:
-        all_ops[document["_id"]] = ops
+        return close
+      self.log.debug(f"Got Op {document_id, content_hash, ops}")
+      if document_id not in all_ops:
+        all_ops[document_id] = ops
       else:
-        all_ops[document["_id"]] += ops
-      return close, (document, content_hash, ops, track)
+        all_ops[document_id] += ops
+      # The last content hash for the document is the valid one.
+      payloads[document_id] = (content_hash, track)
+      return close
 
     self.log.debug("Starting Queue")
     try:
       # collects ops and sends them in a batch, server is ready
-      while self.project.get("connected"):
+      while self.data.get("connected"):
         all_ops = {}
+        payloads = {}
         # await first element
-        close, payload = await dequeue(all_ops)
-        if close:
+        if await dequeue(all_ops):
           return
         # get also all other elements that are currently in queue
         num = self.ops_queue.qsize()
         for i in range(num):
-          close, payload = await dequeue(all_ops)
-          if close:
+          if await dequeue(all_ops):
             return
 
         # apply all ops one after another
         for doc_id, ops in all_ops.items():
           document = self.documents[doc_id]
-          await self._sendOps(*payload)
+          content_hash, track = payloads[doc_id]
+          await self._sendOps(document, content_hash, ops=ops, track=track)
     except Exception as e:
       self.log.debug(traceback.format_exc())
-      await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.updateSidebar(error=e)
       await self.disconnect(f"Op Failed: {e}")
-      raise
+      raise e
     self.log.debug("Queue Exited")
 
-  async def joinDocument(self, buffer):
+  async def joinDocument(self, document):
 
-    # register buffer in document
-    doc = buffer.document
-    doc["buffer"] = buffer
-
-    # register document in project_handler
-    self.documents[doc["_id"]] = doc
-
-    # register document op-buffer
-    self.documents[doc["_id"]]["ops_buffer"] = []
+    # Register a document
+    self.documents[document.id] = document
 
     # register for document-watching
     await self.send(
         "cmd", {
             "name": "joinDoc",
-            "args": [doc["_id"], {
+            "args": [document.id, {
                 "encodeRanges": True
             }]
         })
@@ -428,45 +263,44 @@ class AirLatexProject:
   async def disconnect(self, msg="Disconnected."):
     await self.connection_lock.acquire()
     # Cleanup and inform threads
-    self.log.debug("Connection Closed. Reason:" + msg)
-    self.project["msg"] = msg
-    self.project["open"] = False
-    self.project["connected"] = False
+    self.log.debug(f"Connection Closed. Reason: {msg}")
+    self.data["msg"] = msg
+    self.data["open"] = False
+    self.data["connected"] = False
     self.heartbeat.stop()
-    if "await" in self.project:
-      del self.project["await"]
+    if "await" in self.data:
+      del self.data["await"]
     if self.ws and self.ws.close_code is None:
       self.ws.close()
     await self.ops_queue.put((None, None, None, None, True))
     doc = None
     for doc in self.documents.values():
-      Task(doc["buffer"].deactivate)
-      del doc["buffer"]
+      Task(doc.deactivate)
+      del doc
 
     # Intention disconnet
     if msg == "Disconnected.":
       msg = "Online"
-      if doc and len(Document.allBuffers) > 0:
+      if len(Document.allBuffers) > 0:
         msg = "Connected"
-    Task(self.sidebar.updateStatus(msg))
 
     # A simple reference count shows that this is nowhere ready to be GC'd.
     # So just reuse the object,
-    # self.project["handler"] = None
+    # self.data["handler"] = None
     # self.log.debug(f"References to project {sys.getrefcount(self)}")
     self.connection_lock.release()
-    await self.sidebar.triggerRefresh()
+    await self.updateSidebar(msg)
 
   async def connect(self):
     try:
       await self.connection_lock.acquire()
-      await self.sidebarMsg("Connecting Websocket.")
-      self.project["connected"] = True
+      await self.updateSidebar("Connecting Websocket.")
+      self.data["connected"] = True
       # start tornado event loop & related callbacks
       IOLoop.current().spawn_callback(self.sendOps_flush)
       self.heartbeat.start()
 
-      self.log.debug("Initializing websocket connection to " + self.url)
+      self.log.debug(f"Initializing websocket connection to {self.url}")
       request = HTTPRequest(
           self.url,
           headers={'Cookie': self.cookie},
@@ -479,7 +313,7 @@ class AirLatexProject:
       await self.disconnect(f"Connection Error: {str(e)}")
     else:
       self.connection_lock.release()
-      await self.sidebarMsg("Connected.")
+      await self.updateSidebar("Connected.")
       await self.run()
 
   async def run(self):
@@ -488,13 +322,13 @@ class AirLatexProject:
       self.log.debug("Starting WS loop")
       # Should always be connected, because this is spawned by run
       # Which sets connected.
-      while self.project.get("connected"):
+      while self.data.get("connected"):
         msg = await self.ws.read_message()
 
         if msg is None:
           self.log.debug("No msg")
           break
-        self.log.debug("Raw server answer: " + msg)
+        self.log.debug(f"Raw server answer: {msg}")
 
         # parse the code
         code, await_id, await_mult, answer_id, answer_mult, data = codere.match(
@@ -511,7 +345,7 @@ class AirLatexProject:
 
         # first message
         elif code == "1":
-          await self.gui_await(False)
+          await self.updateSidebar(waiting=False)
 
         # keep alive
         elif code == "2":
@@ -525,12 +359,12 @@ class AirLatexProject:
           # connection accepted => join Project
           if data["name"] == "connectionAccepted":
             _, self.session_id = data["args"]
-            await self.sidebarMsg("Connection Active.")
+            await self.updateSidebar("Connection Active.")
             await self.send(
                 "cmd", {
                     "name": "joinProject",
                     "args": [{
-                        "project_id": self.project["id"]
+                        "project_id": self.data["id"]
                     }]
                 })
 
@@ -566,7 +400,7 @@ class AirLatexProject:
           # error occured
           elif data["name"] == "otUpdateError":
             await self.disconnect(
-                "Error occured on operation Update: " + data["args"][0])
+                f"Error occured on operation Update: {data['args'][0]}")
 
           # Bit of a hack, but trying to keep state consistent might
           # be very annoying
@@ -581,24 +415,23 @@ class AirLatexProject:
               if thread in self.pending_comments:
                 doc_id, count, content = self.pending_comments[thread]
                 Task(
-                    self.documents[doc_id]["buffer"].publishComment, thread,
+                    self.documents[doc_id].publishComment, thread,
                     count, content).next
                 continue
 
             self.comments = await self.getComments()
             thread_id = data["args"][0]
             for doc in self.documents.values():
-              docbuf = doc["buffer"]
-              if thread_id in docbuf.threads:
+              if thread_id in doc.threads:
                 if data["name"] in ("resolve-thread", "reopen-thread"):
-                  docbuf.threads[thread_id]["resolved"] = (
+                  doc.threads[thread_id]["resolved"] = (
                       "resolve-thread" == data["name"])
-                await docbuf.highlightComments(self.comments)
+                await doc.highlightComments(self.comments)
             Task(self.session.comments.triggerRefresh())
 
           # unknown message
           else:
-            await self.sidebarMsg("Data not known: " + msg)
+            await self.updateSidebar(f"Data not known: {msg}")
 
         # answer to our request
         elif code == "6":
@@ -612,10 +445,10 @@ class AirLatexProject:
             project_info = data[1]
             self.log.debug("Joined")
             self.log.debug(json.dumps(project_info))
-            self.project.update(project_info)
-            self.project["open"] = True
+            self.data.update(project_info)
+            self.data["open"] = True
             await self.send("cmd", {"name": "clientTracking.getConnectedUsers"})
-            await self.sidebar.triggerRefresh()
+            await self.updateSidebar()
             self.join_event.set()
 
           elif cmd == "joinDoc":
@@ -623,7 +456,7 @@ class AirLatexProject:
             await self.bufferDo(
                 id, "write",
                 [d.encode("latin1").decode("utf8") for d in data[1]])
-            self.documents[id]["version"] = data[2]
+            self.documents[id].version = data[2]
             # Unknown #3
             await self.bufferDo(
                 id, "highlightComments", data[4].get("comments", []))
@@ -633,7 +466,7 @@ class AirLatexProject:
             id = request["args"][0]
 
             # version increase should be before next event
-            self.documents[id]["version"] += 1
+            self.documents[id].version += 1
 
             # flush next
             request["event"].set()
@@ -647,14 +480,14 @@ class AirLatexProject:
               # It's a comment!
               if 'c' in op:
                 del self.pending_comments[op['t']]
-                self.documents[id]["buffer"].threads[op['t']] = {
+                self.documents[id].threads[op['t']] = {
                     "id": op['t'],
                     "op": op
                 }
                 contains_comments = True
             if contains_comments:
               self.comments = await self.getComments()
-              await self.documents[id]["buffer"].highlightComments(
+              await self.documents[id].highlightComments(
                   self.comments)
               await self.session.comments.triggerRefresh()
 
@@ -671,29 +504,189 @@ class AirLatexProject:
             # server accepted the change
             del self.requests[answer_id]
           else:
-            await self.sidebarMsg(f"Data not known {cmd}:" + str(msg))
+            await self.updateSidebar(f"Data not known {cmd}: {msg}")
 
         # answer to our request
         elif code == "7":
-          await self.sidebarMsg(
+          await self.updateSidebar(
               "Error: Unauthorized. My guess is that"
               " your session cookies are outdated or"
               " not loaded. Typically reloading"
-              " '%s/project' using the browser you"
-              " used for login should reload the"
-              " cookies." % self.session.url)
+              f" '{self.session.settings.url}/project' using the"
+              "browser you used for login should reload the"
+              " cookies.")
 
         # unknown message
         else:
-          await self.sidebarMsg("Unknown Code:" + str(msg))
+          await self.updateSidebar(f"Unknown Code: {msg}")
     except (gen.Return, StopIteration):
       raise
     except Exception as e:
       self.log.debug(traceback.format_exc())
-      await self.sidebarMsg("Error: " + type(e).__name__ + ": " + str(e))
+      await self.updateSidebar(error=e)
       await self.disconnect(f"WS loop Failed: {e}")
       raise
     self.log.debug("WS Exited")
 
   async def keep_alive(self):
     await self.send("keep_alive")
+
+  @property
+  def id(self):
+    return self.data["id"]
+
+  # Misc enpoints
+
+  async def syncGit(self, message):
+    self.log.debug(f"Syncing. {str(self.data)}")
+    # https://www.overleaf.com/project/<project>/github-sync/merge
+    compile_url = f"{self.session.settings.url}/project/{self.id}/github-sync/merge"
+    response = self.session.httpHandler.post(
+        compile_url,
+        headers={
+            'Cookie': self.cookie,
+            'x-csrf-token': self.csrf,
+            'content-type': 'application/json'
+        },
+        json={"message": message})
+    try:
+      assert response.status_code == 200, f"Bad status code {response.status_code}"
+      self.log.debug("Synced.")
+    except Exception as e:
+      self.log.debug(traceback.format_exc())
+      self.log.debug("\nError in sync:")
+      self.log.debug(f"{response.content}\n---\n{e}")
+
+  async def compile(self):
+    self.log.debug(f"Compiling. {str(self.data)}")
+    compile_url = f"{self.session.settings.url}/project/{self.id}/compile?enable_pdf_caching=true"
+    response = self.session.httpHandler.post(
+        compile_url,
+        headers={
+            'Cookie': self.cookie,
+            'x-csrf-token': self.csrf,
+            'content-type': 'application/json'
+        },
+        json={
+            "rootDoc_id": self.data["rootDoc_id"],
+            "draft": False,
+            "check": "silent",
+            "incrementalCompilesEnabled": True,
+            "stopOnFirstError": False
+        })
+
+    try:
+      data = response.json()
+      if data["status"] != "success":
+        raise Exception("No success in compiling. Something failed.")
+      self.log.debug("Compiled.")
+    except Exception as e:
+      self.log.debug(traceback.format_exc())
+      self.log.debug("\nCompilation response content:")
+      self.log.debug(f"{response.content}\n---\n{e}")
+
+  async def adjustComment(
+      self, thread, state, content="", resolve_state=None, retract=False):
+    resolve_url = f"{self.session.settings.url}/project/{self.id}/thread/{thread}/{state}"
+    payload = {"_csrf": self.csrf}
+    if content:
+      payload["content"] = content
+    response = self.session.httpHandler.post(
+        resolve_url, headers={
+            'Cookie': self.cookie,
+        }, json=payload)
+    self.log.debug(f"adjusting comment to {state}")
+    try:
+      assert response.status_code == 204, f"Bad status code {response.status_code}"
+      # We'll get a websocket confirmation, and handle it from there.
+      # Nothing else to do
+    except Exception as e:
+      self.log.debug(traceback.format_exc())
+      self.log.debug("\n {state} response content:")
+      self.log.debug(f"{response.content}\n---\n{e}")
+      if resolve_state is not None:
+        self.comments.get(thread, {})["resolved"] = resolve_state
+      if retract:
+        del self.comments[thread]
+
+  def resolveComment(self, thread):
+    self.comments.get(thread, {})["resolved"] = True
+    Task(self.adjustComment(thread, "resolve", resolve_state=False))
+
+  def reopenComment(self, thread):
+    self.comments.get(thread, {})["resolved"] = False
+    Task(self.adjustComment(thread, "reopen", resolve_state=True))
+
+  def replyComment(self, thread, content):
+    self.comments.get(thread, {}).get("messages", []).append(
+        {
+            "user": {
+                "first_name": "** (pending)"
+            },
+            "content": content,
+            "timestamp": datetime.now().timestamp()
+        })
+    Task(self.adjustComment(thread, "messages", content))
+
+  def createComment(self, thread, doc_id, content):
+    doc = self.documents[doc_id]
+    interval = doc.comment_selection[:].pop()
+    count = interval.begin
+    highlight = "\n".join(doc.buffer[:])[interval.begin:interval.end]
+    if not content or not highlight:
+      return
+    self.comments[thread] = {
+        "messages":
+            [
+                {
+                    "user": {
+                        "first_name": "** (pending)"
+                    },
+                    "content": content,
+                    "timestamp": datetime.now().timestamp()
+                }
+            ]
+    }
+    self.pending_comments[thread] = (doc_id, count, highlight)
+    Task(self.adjustComment(thread, "messages", content, retract=True))
+
+  async def getComments(self):
+    comment_url = f"{self.session.settings.url}/project/{self.id}/threads"
+    response = self.session.httpHandler.get(
+        comment_url, headers={
+            'Cookie': self.cookie,
+        })
+    try:
+      comments = response.json()
+      self.log.debug("Got comments")
+      return comments
+    except Exception as e:
+      self.log.debug(traceback.format_exc())
+      self.log.debug("\nComments response content:")
+      self.log.debug(f"{response.content}\n---\n{e}")
+    Task(self.session.comments.markInvalid())
+    return None
+
+  async def clearRemoteCursor(self, session_id):
+    for document_id in self.documents:
+      await self.bufferDo(document_id, "clearRemoteCursor", session_id)
+
+  async def updateRemoteCursor(self, cursors):
+    for cursor in cursors:
+      if "row" in cursor and "column" in cursor and "doc_id" in cursor:
+        await self.bufferDo(cursor["doc_id"], "updateRemoteCursor", cursor)
+
+  async def updateCursor(self, doc, pos):
+    event = Event()
+    await self.send(
+        "update", {
+            "name":
+                "clientTracking.updatePosition",
+            "args":
+                [{
+                    "doc_id": doc["_id"],
+                    "row": pos[0] - 1,
+                    "column": pos[1]
+                }]
+        },
+        event=event)

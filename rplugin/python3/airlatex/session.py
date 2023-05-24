@@ -26,12 +26,14 @@ class AirLatexSession:
     self.project_data = {}
     self.authenticated = False
 
+    ## Build the buffers
     # initialize sidebar
     self.sidebar = Sidebar(nvim, self)
     self.sidebar.hide()
 
     self.comments = Comments(nvim)
-    # Show after prevents the buffers from gettin in each other's way.
+    # Show after prevents the buffers from getting in each other's way.
+    self.comments.hide()
     self.sidebar.show()
 
   @property
@@ -49,7 +51,7 @@ class AirLatexSession:
   # TODO try to remove async
   async def _getWebSocketURL(self):
     # Generating timestamp
-    timestamp = _genTimeStamp()
+    timestamp = generateTimeStamp()
 
     # To establish a websocket connection
     # the client must query for a sec url
@@ -59,7 +61,7 @@ class AirLatexSession:
     wsChannel = channelInfo.text[:channelInfo.text.find(":")]
     self.log.debug(f"Websocket wsChannel '{wsChannel}'")
 
-    protocol = "wss" if self.https else "ws"
+    protocol = "wss" if self.settings.https else "ws"
     return f"{protocol}://{self.settings.domain}/socket.io/1/websocket/{wsChannel}"
 
   async def _checkLogin(self, force=False):
@@ -157,7 +159,7 @@ class AirLatexSession:
       # If it exists, just trigger refresh, otherwise create a project.
       if self.projects.get(project_id):
         self.projects[project_id].refresh(
-            socket, self.projects[project_id], csrf, cookie=self.cookies)
+            socket, self.project_data[project_id], csrf, cookie=self.cookies)
       else:
         self.projects[project_id] = AirLatexProject(
             socket,
@@ -165,7 +167,7 @@ class AirLatexSession:
             csrf,
             self,
             cookie=self.cookies,
-            wait_for=self.wait_for,
+            wait_for=self.settings.wait_for,
             validate_cert=self.httpHandler.verify)
       Task(self.sidebar.updateStatus("Connected"))
     # start connection

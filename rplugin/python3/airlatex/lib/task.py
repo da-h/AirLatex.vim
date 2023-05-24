@@ -13,11 +13,9 @@ import inspect
 import traceback
 
 
-# For ambiguos number of parameters / response
+# For ambiguous number of parameters / response
 def _call(fn, result, args=None):
   result = _args(result, args)
-  with open('args.txt', 'a') as f:
-    print(f"result {result} {args}", file=f)
   if result is None:
     return fn()
   elif isinstance(result, tuple):
@@ -33,6 +31,14 @@ def _args(result, args):
     return ()
   return result
 
+async def _untangle(callback):
+  while (inspect.iscoroutine(callback) or
+         inspect.iscoroutinefunction(callback)):
+    if not inspect.iscoroutine(callback):
+      callback = callback()
+    callback = await callback
+  return callback
+
 
 class _VimDecorator:
 
@@ -41,8 +47,6 @@ class _VimDecorator:
     self.args = args
 
   def __call__(self, *args, **kwargs):
-    with open('args.txt', 'a') as f:
-      print(f"call {self} {args}", file=f)
     return self.fn(*args, **kwargs)
 
   def _build_async_call(self, channel):
@@ -62,10 +66,6 @@ class AsyncDecorator(_VimDecorator):
     async def callback(*args):
 
       def hook():
-        with open('args.txt', 'a') as f:
-          print(f"{self}", file=f)
-          print(f"A {args}", file=f)
-          print(f"B {self.args}", file=f)
         create_task(channel.put(_call(self, args, self.args)))
 
       self.nvim.async_call(hook)
@@ -98,8 +98,6 @@ class _ChainHelper(_VimDecorator):
       args = await self.source.get()
 
       def hook():
-        with open('args.txt', 'a') as f:
-          print(f"Erp?", file=f)
         create_task(sink.put(_call(self, args, self.args)))
 
       AsyncDecorator.nvim.async_call(hook)
@@ -119,7 +117,18 @@ class Task():
       fn = fn._build_async_call(self.channel)
     if not inspect.iscoroutine(fn):
       fn = fn(*args)
+    # self.task = create_task(fn)
     self.task = create_task(fn)
+
+  def _logWrapper(self, awaitable):
+    trace = traceback.format_stack()
+    async def wrap():
+      try:
+        return await awaitable
+      except Exception as e:
+        raise Exception("".join(trace)[:-1]) from e
+    return wrap()
+
 
   @staticmethod
   def Fn(*args, vim=False):
@@ -139,7 +148,9 @@ class Task():
   def _build_enqueue(self, *args):
 
     def enqueue(future):
-      task = self.channel.put(_args(future.result(), args))
+      result = future.result()
+      task = self.channel.put(_args(result, args))
+      # create_task(task)
       create_task(task)
 
     return enqueue
@@ -148,7 +159,7 @@ class Task():
 
     async def callback():
       result = await self.channel.get()
-      return _call(fn, result)
+      return await _call(fn, result)
 
     return callback
 
@@ -174,8 +185,7 @@ class Task():
   def next(self):
     # Syntaxic sugar for resolving a returned future.
     async def wait(callback):
-      if not inspect.iscoroutine(callback):
-        callback = callback()
-      return await callback
+      response = await _untangle(callback)
+      return response
 
     return self.then(wait)

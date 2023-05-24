@@ -8,13 +8,13 @@ from logging import getLogger
 
 class Buffer(ABC):
 
-  def __init__(self, nvim):
+  def __init__(self, nvim, *args, **kwargs):
     self.nvim = nvim
     self.session = None
     self.buffer = None
     self.log = getLogger("AirLatex")
     self.lock = Lock()
-    self.initialize()
+    self.initialize(*args, **kwargs)
 
   @property
   def visible(self):
@@ -28,9 +28,8 @@ class Buffer(ABC):
       self.log.debug(c)
       self.nvim.command(c.strip())
 
-  def initialize(self):
-    self.buffer = self.buildBuffer()
-    return Task(self.lock.acquire).then(self._render)
+  def initialize(self, *args, **kwargs):
+    self.buffer = self.buildBuffer(*args, **kwargs)
 
   @abstractmethod
   def buildBuffer(self, *args, **kwargs):

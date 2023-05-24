@@ -73,7 +73,7 @@ class AirLatex():
 
   @pynvim.function('AirLatex_CommentSelection', sync=True)
   def commentSelection(self, args):
-    if self.session.comments.creation or self.session.comments.drafting:
+    if (self.session.comments.creation or self.session.comments.drafting or self.session.comments.invalid):
       return
     start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
     end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
@@ -84,13 +84,11 @@ class AirLatex():
       end_col = 1
       end_line += 1
 
-    if self.session.comments.invalid:
-      return
     buffer = self.nvim.current.buffer
     if buffer in Document.allBuffers:
       document = Document.allBuffers[buffer]
-      self.session.comments.creation = document.document["_id"]
-      self.session.comments.project = document.project_handler
+      self.session.comments.creation = document.id
+      self.session.comments.project = document.project
       document.markComment(
           start_line - 1, start_col - 1, end_line - 1, end_col - 1)
       self.session.comments.prepCommentCreation()
@@ -114,13 +112,16 @@ class AirLatex():
   def compile(self, args):
     buffer = self.nvim.current.buffer
     if buffer in Document.allBuffers:
-      Document.allBuffers[buffer].compile()
+      Document.allBuffers[buffer].project.compile()
 
   @pynvim.function('AirLatex_GitSync', sync=True)
-  def compile(self, args):
+  def syncGit(self, args):
     buffer = self.nvim.current.buffer
     if buffer in Document.allBuffers:
-      Document.allBuffers[buffer].syncGit(*args)
+      message, = args
+      while not message:
+        message = self.nvim.funcs.input('Commit Message: ')
+      Document.allBuffers[buffer].project.syncGit(message)
 
   @pynvim.function('AirLatexToggle', sync=True)
   def toggle(self, args):
@@ -191,28 +192,23 @@ class AirLatex():
 
     # TODO move out of init.
     # Probs to session and Document
-    async def get_joined_doc(handler):
-      await handler.join_event.wait()
-      for folder in handler.project["rootFolder"]:
+    async def get_joined_doc(project):
+      await project.join_event.wait()
+      for folder in project.data["rootFolder"]:
         for doc in folder["docs"]:
           if did == doc["_id"]:
-            self.log.debug(f"Returning data {doc, handler}")
-            return doc, handler
+            self.log.debug(f"Returning data {doc, project}")
+            return doc, project
       if not found:
         self.log.debug(f"Doc not found..?")
         raise Exception(f"{pid, did}")
 
     # Rejoin vim thread
     @AsyncDecorator
-    def build_buffer(doc, handler):
-      self.log.debug(f"Queing tasks")
-      documentbuffer = Document(
-          [handler.project, doc], self.nvim, new_buffer=False)
-      self.log.debug(f"Built docs")
-      Task(handler.joinDocument(documentbuffer))
-      Task(handler.gui_await())
-      self.log.debug(f"Starting wait")
-      return documentbuffer.buffer_event.wait
+    def build_buffer(doc, project):
+      document = Document(self.nvim, project, [doc], doc, new_buffer=False)
+      Task(project.joinDocument(document))
+      return document.buffer_event.wait
 
     @AsyncDecorator
     def set_cursor():
@@ -222,8 +218,8 @@ class AirLatex():
 
     # If the project is already connected, then just use the exisiting
     # connection to reconnect
-    if self.session.projects.get(pid, {}).get("connected", False):
-      task = Task(get_joined_doc, self.session.projects[pid]["handler"])
+    if self.session.project_data.get(pid, {}).get("connected", False):
+      task = Task(get_joined_doc, self.session.projects[pid])
     else:
       task = Task(
           self.session.connectProject, {

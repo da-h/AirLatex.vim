@@ -1,34 +1,35 @@
 from collections import namedtuple
 from typing import List, Union, Dict
+import inspect
+from copy import deepcopy
 
 import textwrap
 
 from airlatex.lib.task import AsyncDecorator
+
 
 class Menu():
 
   def __init__(self, title=None, size=80, actions=None):
     if not title:
       title = ""
-    self.title = title
-    self.size = size
     if actions is None:
       actions = {}
     self.Item = _make_menu_item(actions)
-    self._handlers = {}
     self.entries = []
-    self.entries_by_key = {}
+    self._handlers = {}
+    self.clear(title, size)
 
   def clear(self, title, size):
     self.title = title
     self.size = size
+    self.previous = deepcopy(self.entries)
+    self.entries = [
+      (self.title.center(self.size).rstrip(), None),
+      ("", None)
+    ]
+    self.entries_by_key = {}
     return self
-
-  def __call__(self, action, key):
-    fn = self._handlers.get((action.__class_, key))
-    if fn:
-      return fn(*action)
-    return None
 
   def add_entry(self, line, action=None, key=None, indent=0):
     if key:
@@ -62,25 +63,24 @@ class Menu():
       elif isinstance(lookup, tuple):
         line = format.format(*lookup)
       else:
-        with open('menu.txt', 'a') as f:
-          print(f"lookup {format} {lookup}", file=f)
         line = format.format(lookup)
       lines.append((line, item, key))
     return self.add_bulk(*lines)
 
   def space(self, n):
     for _ in range(n):
-      self.add_entry('')
+      self.add_entry('-')
 
   @AsyncDecorator
   def updateEntryByKey(self, key, line):
-    self.entries[self.entries_by_key[key]] = line
+    _, action = self.entries[self.entries_by_key[key]]
+    self.entries[self.entries_by_key[key]] = (line, action)
 
-  def add_block(self, content, header=None):
-    if header:
-      if len(header) != 2:
-        raise Exception("Yeah, no. You can implement this in a PR if you want")
-      user, time = header
+  def add_block(self, content, headers=None):
+    if len(headers) != 2:
+      raise Exception("You can implement this in a PR if you want")
+    size = self.size
+    user, short_date = headers
 
     space = size - len(user) - len(short_date) - 6
     user = f"  {user} │"

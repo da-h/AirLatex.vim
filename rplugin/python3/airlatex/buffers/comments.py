@@ -13,8 +13,10 @@ class Comments(PassiveMenuBuffer):
     super().__init__(
         nvim,
         actions={
-          "Resolve":[],
-          "Unresolve":[]
+          "Actions":{
+            "Resolve":[],
+            "Unresolve":[]
+          }
       })
     self.log.debug("Threads / Comments initialized.")
 
@@ -101,13 +103,15 @@ class Comments(PassiveMenuBuffer):
   @pynvimCatchException
   def _render(self):
     self.log.debug(f"in render {self.threads, self.index}")
-    self.buffer[:] = []
+    # self.buffer[:] = []
 
     if self.invalid:
       self.buffer[0] = "Unable to communicate with comments server."
+      self.lock.release()
       return
 
     if not self.threads:
+      self.lock.release()
       return
     # Reset
     self.drafting = False
@@ -116,6 +120,7 @@ class Comments(PassiveMenuBuffer):
     thread = self.project.comments.get(self.threads[self.index])
     if not thread:
       self.log.debug(f"all {self.threads}")
+      self.lock.release()
       return
 
     # Eval on the fly, because it's fair this could change.
@@ -126,7 +131,7 @@ class Comments(PassiveMenuBuffer):
       indicator = f" ({self.index + 1} / {len(self.threads)})"
 
     # Display Header
-    menu = menu.clear(title=f"Comments{indicator}", size=size)
+    menu = self.menu.clear(title=f"Comments{indicator}", size=size)
 
     if thread.get("resolved", False):
       menu.add_entry(f"!! Resolved")
@@ -146,24 +151,23 @@ class Comments(PassiveMenuBuffer):
       menu.add_block(headers=[user, short_date], content=content)
 
     if thread.get("resolved", False):
-      menu.add_entry(f" » reopen{' ' * (size - 4 - 7)}⬃⬃")
+      menu.add_entry(f" » reopen{' ' * (size - 4 - 7)}⬃⬃", menu.Item.Actions.Unresolve())
     else:
-      menu.add_entry(f" » resolve{' ' * (size - 5 - 7)}✓✓")
+      menu.add_entry(f" » resolve{' ' * (size - 5 - 7)}✓✓", menu.Item.Actions.Resolve())
 
+    self.write()
     if self.lock.locked():
       self.lock.release()
     self.log.debug(f"Finished Render")
 
   @pynvimCatchException
-  def registerCursorActions(self, handle):
-    if self.invalid:
-      return
+  def registerCursorActions(self, MenuItem, handle):
 
-    @menu.handle(Actions.Resolve)
+    @handle(MenuItem.Actions.Resolve)
     def resolve():
       self.project.resolveComment(self.threads[self.index])
 
-    @menu.handle(Actions.Unresolve)
+    @handle(MenuItem.Actions.Unresolve)
     def unresolve():
       self.project.reopenComment(self.threads[self.index])
 
@@ -220,6 +224,7 @@ class Comments(PassiveMenuBuffer):
     self.creation = ""
     # Qutting, not submitting
     if not submit:
+      self.menu.clear("", 0)
       # If the comment buffer wasn't set to being open,
       # return to that state.
       if self.previous_open:
@@ -253,10 +258,11 @@ class Comments(PassiveMenuBuffer):
 
   @pynvimCatchException
   def prepCommentRespond(self):
+    self.menu.clear("", 0)
     if self.invalid:
       return
     if not self.drafting:
-      p = lambda S: [s.rstrip() for s in S.split("\n")]
+      p = lambda S: [s.strip() for s in S.split("\n")]
       self.buffer[:] = p(
           """
       #

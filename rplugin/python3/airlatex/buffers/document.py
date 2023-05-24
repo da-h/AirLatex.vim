@@ -3,6 +3,7 @@ from copy import deepcopy
 from difflib import SequenceMatcher
 from hashlib import sha1, md5
 import time
+import asyncio
 
 from intervaltree import Interval, IntervalTree
 
@@ -22,24 +23,25 @@ highlight = namedtuple("Highlight", ["comment", "double", "pending"])
 class Document(Buffer):
   allBuffers = allBuffers
 
-  def __init__(self, nvim, project, data, new_buffer=True):
-    super().__init__(nvim)
+  def __init__(self, nvim, project, path, data, new_buffer=True):
+    self.data = data
+    self.name = Document.getName(path)
+    self.ext = Document.getExt(self.data)
+    self.nonce = f"{time.time()}"
+    self.project = project
+    self.highlight_names = highlight(*highlight_groups)
+    super().__init__(nvim, new_buffer=new_buffer)
+
+    self.data["ops_buffer"] = []
 
     self.comments_active = True
     self.comments_display = True
-    self.nonce = f"{time.time()}"
 
-    self.data = data[-1]
-    self.name = Document.getName(data)
-    self.ext = Document.getExt(self.document)
-
-    self.project = project
 
     self.saved_buffer = None
     self.threads = {}
 
-    self.highlight_names = highlight(*highlight_groups)
-    self.highlights = highlight(
+    self.highlight = highlight(
         *map(self.nvim.api.create_namespace, highlight_groups))
 
     self.comment_selection = IntervalTree()
@@ -50,11 +52,11 @@ class Document(Buffer):
     # self.cumulative_lines = FenwickTree()
     self.cumulative_lines = NaiveAccumulator()
 
-  def buildBuffer(self, new_buffer):
+
+  def buildBuffer(self, new_buffer=True):
 
     if new_buffer:
-      self.nvim.command(
-          f"""
+      self.nvim.command(f"""
         wincmd w
         enew
         file {self.name}
@@ -73,6 +75,7 @@ class Document(Buffer):
       setlocal noswapfile
       setlocal buftype=nofile
       set filetype={self.ext}
+      setlocal modifiable
     """)
 
     # Autogroups
@@ -87,8 +90,8 @@ class Document(Buffer):
     # au CursorMoved <buffer> call AirLatex_ShowComments()
 
     # Buffer bindings
-    pid = self.project_handler.project["id"]
-    did = self.document["_id"]
+    pid = self.project.id
+    did = self.id
     self.command(
         f"""
       vnoremap gv :<C-u>call AirLatex_CommentSelection()<CR>
@@ -99,22 +102,14 @@ class Document(Buffer):
     """)
 
     # Comment formatting
-    self.nvim.command(
+    self.command(
         f"""
-      hi {self.highlight_names.comment} ctermbg=190
-      hi {self.highlight_names.pending} ctermbg=58
+      hi {self.highlight_names.pending} ctermbg=190
+      hi {self.highlight_names.comment} ctermbg=58
       hi {self.highlight_names.double} ctermbg=94
       hi CursorGroup ctermbg=18
     """)
     return buffer
-
-  def syncGit(self, message=None):
-    while not message:
-      message = self.nvim.funcs.input('Commit Message: ')
-    Task(self.project_handler.syncGit(message))
-
-  def compile(self):
-    Task(self.project_handler.compile())
 
   def highlightRange(
       self, highlight, group, start_line, start_col, end_line, end_col):
@@ -126,6 +121,19 @@ class Document(Buffer):
       for line_num in range(start_line + 1, end_line):  # In-between lines
         self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
       self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
+
+
+  @property
+  def id(self):
+    return self.data["_id"]
+
+  @property
+  def version(self):
+    return self.data["version"]
+
+  @version.setter
+  def version(self, v):
+    self.data["version"] = v
 
   @staticmethod
   def getName(path):
@@ -241,8 +249,8 @@ class Document(Buffer):
   @AsyncDecorator
   def publishComment(self, thread, count, content):
     # Yes, we call document, just to call back because we to get buffer info.
-    return self.project_handler.sendOps(
-        self.document,
+    return self.project.sendOps(
+        self.id,
         self.content_hash,
         ops=[{
             "c": content,
@@ -285,8 +293,8 @@ class Document(Buffer):
     @Task(self.buffer_event.wait).fn(vim=True)
     def highlight_callback():
       # Clear any existing highlights
-      self.buffer.api.clear_namespace(self.highlight, 0, -1)
-      self.buffer.api.clear_namespace(self.highlight2, 0, -1)
+      self.buffer.api.clear_namespace(self.highlight.comment, 0, -1)
+      self.buffer.api.clear_namespace(self.highlight.double, 0, -1)
       self.thread_intervals.clear()
       if threads:
         self.threads = {thread["id"]: thread for thread in threads}
@@ -341,7 +349,7 @@ class Document(Buffer):
         comment_buffer.clear()
       return
     self.log.debug(f"found threads {threads}")
-    comment_buffer.render(self.project_handler, threads)
+    comment_buffer.render(self.project, threads)
 
   def clearRemoteCursor(self, remote_id):
     if remote_id in self.cursors:
@@ -353,7 +361,7 @@ class Document(Buffer):
     # Don't draw the current cursor
     # Client id if remote, id if local
     if not cursor.get("id") or cursor.get(
-        "id") == self.project_handler.session_id:
+        "id") == self.project.session_id:
       return
 
     @Task.Fn(cursor, vim=True)
@@ -420,7 +428,7 @@ class Document(Buffer):
 
     # update CursorPosition
     cursor = self.nvim.current.window.cursor
-    Task(self.project_handler.updateCursor(self.document, cursor))
+    Task(self.project.updateCursor(self.data, cursor))
 
     if comments:
       Task(self.showComments(cursor, comments))
@@ -539,8 +547,8 @@ class Document(Buffer):
 
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
     Task(
-        self.project_handler.sendOps(
-            self.document, self.content_hash, ops, track))
+        self.project.sendOps(
+            self.id, self.content_hash, ops, track))
 
   def applyUpdate(self, packet, comments):
     self.log.debug("apply server updates to buffer")
@@ -548,8 +556,8 @@ class Document(Buffer):
     # adapt version
     if "v" in packet:
       v = packet["v"]
-      if v >= self.document["version"]:
-        self.document["version"] = v + 1
+      if v >= self.version:
+        self.version = v + 1
 
     # do nothing if no op included
     if not 'op' in packet:
