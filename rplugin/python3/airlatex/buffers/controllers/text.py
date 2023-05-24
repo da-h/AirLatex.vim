@@ -1,3 +1,7 @@
+from airlatex.buffers.controllers.thread import AsyncDecorator
+from airlatex.lib.task import AsyncDecorator, Task
+
+class Text():
   def getLineInfo(self, start, end):
     char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
     # TODO replace with search

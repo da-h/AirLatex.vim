@@ -7,9 +7,9 @@ import asyncio
 
 from intervaltree import Interval, IntervalTree
 
-from airlatex.lib.range import FenwickTree, NaiveAccumulator
 from airlatex.lib.task import AsyncDecorator, Task
 from airlatex.buffers.buffer import Buffer
+from airlatex.buffers.controllers import Text()
 
 if "allBuffers" not in globals():
   allBuffers = {}
@@ -37,19 +37,13 @@ class Document(Buffer):
     self.highlight_names = highlight(*highlight_groups)
     super().__init__(nvim, new_buffer=new_buffer)
 
+    self.buffer_event = asyncio.Event()
     self.data["ops_buffer"] = []
-
-    self.comments_active = True
-    self.comments_display = True
-
-    self.threads = Threads()
-    self.text = Text()
-
+    self.cursors = {}
     self.highlight = highlight(
         *map(self.nvim.api.create_namespace, highlight_groups))
 
-    self.buffer_event = asyncio.Event()
-    self.cursors = {}
+    self.text = Text()
 
   def buildBuffer(self, new_buffer=True):
 
@@ -192,7 +186,7 @@ class Document(Buffer):
     # Yes, we call document, just to call back because we need to get buffer info.
     return self.project.sendOps(
         self.id,
-        self.content_hash,
+        self.text.content_hash,
         ops=[{
             "c": content,
             "p": count,
@@ -222,10 +216,7 @@ class Document(Buffer):
             self.highlight.double, self.highlight_names.double, *lineinfo)
 
   async def showComments(self, cursor, comment_buffer):
-    previous_state = self.comments_active
-    self.comments_display = not (
-        comment_buffer.drafting or comment_buffer.creation)
-    if not self.comments_display:
+    if comment_buffer.drafting or comment_buffer.creation:
       return
     if not previous_state:
       Task(
@@ -237,12 +228,9 @@ class Document(Buffer):
       self.comment_selection = IntervalTree()
 
     # TODO
-    thread = get_threads
-    previously_active = self.comments_active
-    self.comments_active = bool(threads)
-    if not self.comments_active:
-      if previously_active:
-        comment_buffer.clear()
+    thread = get threads
+    if not threads:
+      comment_buffer.clear()
       return
     comment_buffer.render(self.project, threads)
 
@@ -329,7 +317,7 @@ class Document(Buffer):
         for op in ops:
           self.log.debug(f"the op {op} and {'c' in op}")
 
-          text.applyOp(self.buffer)
+          text applyOp(self.buffer)
 
           # add comment
           if 'c' in op:
