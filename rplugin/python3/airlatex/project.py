@@ -389,12 +389,8 @@ class AirLatexProject:
           # update applied => apply update to buffer
           elif data["name"] == "otUpdateApplied":
 
-            # nothing to do?
-            if "args" not in data:
-              continue
-
             # apply update to buffer
-            for op in data["args"]:
+            for op in data.get("args", []):
               await self.bufferDo(op["doc"], "applyUpdate", op)
 
           # error occured

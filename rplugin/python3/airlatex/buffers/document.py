@@ -42,21 +42,14 @@ class Document(Buffer):
     self.comments_active = True
     self.comments_display = True
 
-
-    self.saved_buffer = None
-    self.threads = {}
+    self.threads = Threads()
+    self.text = Text()
 
     self.highlight = highlight(
         *map(self.nvim.api.create_namespace, highlight_groups))
 
-    self.comment_selection = IntervalTree()
-    self.thread_intervals = IntervalTree()
     self.buffer_event = asyncio.Event()
     self.cursors = {}
-
-    self.cumulative_lines2 = FenwickTree()
-    self.cumulative_lines = NaiveAccumulator()
-
 
   def buildBuffer(self, new_buffer=True):
 
@@ -116,17 +109,6 @@ class Document(Buffer):
     """)
     return buffer
 
-  def highlightRange(
-      self, highlight, group, start_line, start_col, end_line, end_col):
-    if start_line == end_line:
-      self.buffer.api.add_highlight(
-          highlight, group, start_line, start_col, end_col)
-    else:
-      self.buffer.api.add_highlight(highlight, group, start_line, start_col, -1)
-      for line_num in range(start_line + 1, end_line):  # In-between lines
-        self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
-      self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
-
   @property
   def id(self):
     return self.data["_id"]
@@ -151,25 +133,6 @@ class Document(Buffer):
   def augroup(self):
     "Need a file unique string. Could use docid I guess."
     return "x" + md5((self.name + self.nonce).encode('utf-8')).hexdigest()
-
-  @property
-  def content_hash(self):
-    # compute sha1-hash of current buffer
-    cumulative_lines = self.cumulative_lines
-    # compute sha1-hash of current buffer
-    buffer_cpy = self.saved_buffer[:]
-    current_len = 0
-    for i, row in enumerate(buffer_cpy):
-      current_len += len(row) + 1
-    current_len -= 1
-    tohash = ("blob " + str(current_len) + "\x00")
-    self.log.debug(f"Lengths {current_len, self.cumulative_lines[-1]}")
-    self.log.debug(f"Lengths {current_len, self.cumulative_lines2[-1]}")
-
-    tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
-    sha = sha1()
-    sha.update(tohash.encode())
-    return sha.hexdigest()
 
   async def deactivate(self):
     await self.lock.acquire()
@@ -203,55 +166,30 @@ class Document(Buffer):
       finally:
         self.lock.release()
 
-  def markComment(self, *lineinfo):
-    if self.comment_selection.is_empty():
-      self.comment_selection = IntervalTree()
-      start_line, start_col, end_line, end_col = lineinfo
-      self.comment_selection.add(
-          Interval(
-              self.cumulative_lines.position(start_line, start_col),
-              self.cumulative_lines.position(end_line, end_col)))
+  def highlightRange(
+      self, highlight, group, start_line, start_col, end_line, end_col):
+    if start_line == end_line:
+      self.buffer.api.add_highlight(
+          highlight, group, start_line, start_col, end_col)
+    else:
+      self.buffer.api.add_highlight(highlight, group, start_line, start_col, -1)
+      for line_num in range(start_line + 1, end_line):  # In-between lines
+        self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
+      self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
 
+  def markComment(self, *lineinfo):
+      #TODO
       self.highlightRange(
           self.highlight.pending, self.highlight_names.pending, *lineinfo)
 
   def getCommentPosition(self, next: bool = False, prev: bool = False):
-    if next == prev:
-      return (-1, -1), 0
-
+    # TODO
     cursor = self.nvim.current.window.cursor
     cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
 
-    if next:
-      positions = self.thread_intervals[
-          cursor_offset + 1:] - self.thread_intervals[cursor_offset]
-      offset = len(self.thread_intervals[:]) - len(positions) + 1
-      if not positions:
-        positions = self.thread_intervals[:
-                                          cursor_offset] - self.thread_intervals[
-                                              cursor_offset]
-        offset = 1
-      if not positions:
-        return (-1, -1), 0
-      pos = min(positions).begin
-    elif prev:
-      positions = self.thread_intervals[:cursor_offset] - self.thread_intervals[
-          cursor_offset]
-      offset = len(positions)
-      if not positions:
-        positions = self.thread_intervals[
-            cursor_offset + 1:] - self.thread_intervals[cursor_offset]
-        offset = 1
-      if not positions:
-        return (-1, -1), 0
-      pos = max(positions).begin
-
-    _, start_line, start_col, *_ = self.getLineInfo(pos, pos + 1)
-    return (start_line + 1, start_col), offset
-
   @AsyncDecorator
   def publishComment(self, thread, count, content):
-    # Yes, we call document, just to call back because we to get buffer info.
+    # Yes, we call document, just to call back because we need to get buffer info.
     return self.project.sendOps(
         self.id,
         self.content_hash,
@@ -262,35 +200,9 @@ class Document(Buffer):
         }])
 
   def highlightComment(self, comments, thread):
-    thread_id = thread["id"]
-    if not comments:
-      return
-    comments = comments.get(thread_id, {})
-    resolved = comments.get("resolved", False)
-    if resolved or not comments:
-      return
-
-    start = thread["op"]["p"]
-    end = start + len(thread["op"]["c"])
-
-    char_count, start_line, start_col, end_line, end_col = self.getLineInfo(
-        start, end)
-    # Apply the highlight
-    self.log.debug(
-        f"highlight {start_line} {start_col} {end_line} {end_col} |"
-        f"{start, end}")
-
-    if start == end:
-      start -= 1
-      end += 1
-      start_col = max(start_col - 1, 0)
-      end_col = min(
-          end_col + 1, char_count + self.cumulative_lines[end_line] - 1)
-
     self.highlightRange(
         self.highlight.comment, self.highlight_names.comment, start_line,
         start_col, end_line, end_col)
-    self.thread_intervals[start:end] = thread_id
 
   async def highlightComments(self, comments, threads=None):
     @Task(self.buffer_event.wait).fn(vim=True)
@@ -305,18 +217,7 @@ class Document(Buffer):
         self.highlightComment(comments, thread)
       # Apply double highlights. Note we could extend this to the nth case, but
       # 2 seems fine
-      overlapping_ranges = set()
-      for interval in self.thread_intervals:
-        overlaps = self.thread_intervals[interval.begin:interval.end]
-        for overlap in overlaps:
-          if overlap == interval:
-            continue
-          overlapping_range = Interval(
-              max(interval.begin, overlap.begin),
-              min(interval.end, overlap.end))
-          overlapping_ranges.add(overlapping_range)
-      for overlap in overlapping_ranges:
-        _, *lineinfo = self.getLineInfo(overlap.begin, overlap.end)
+      for :#TODO
         self.highlightRange(
             self.highlight.double, self.highlight_names.double, *lineinfo)
 
@@ -335,9 +236,8 @@ class Document(Buffer):
           vim=True)
       self.comment_selection = IntervalTree()
 
-    cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
-    threads = self.thread_intervals[cursor_offset]
-
+    # TODO
+    thread = get_threads
     previously_active = self.comments_active
     self.comments_active = bool(threads)
     if not self.comments_active:
@@ -379,41 +279,12 @@ class Document(Buffer):
             highlight, 'CursorGroup', cursor["row"], cursor["column"],
             cursor["column"] + 1)
 
-  def getLineInfo(self, start, end):
-    char_count, start_line, start_col, end_line, end_col = 0, -1, 0, 0, 0
-    # TODO replace with search
-    for i, line in enumerate(self.buffer[:]):
-      line_length = len(line) + 1  # +1 for the newline character
-      if char_count + line_length > start and start_line == -1:
-        start_line, start_col = i, start - char_count
-      if char_count + line_length >= end:
-        end_line, end_col = i, end - char_count
-        break
-      char_count += line_length
-    if start_line < 0:
-      start_line = end_line
-    return char_count, start_line, start_col, end_line, end_col
-
   def write(self, lines):
 
     @Task(self.lock.acquire).fn(self.buffer, lines, vim=True)
     def writeLines(buffer, lines):
-      buffer[:] = []
-      if lines:
-        buffer[0] = lines[0]
-        lengths = [
-            0,
-        ] * len(lines)
-        lengths[0] = len(lines[0]) + 1
-        for i, l in enumerate(lines[1:]):
-          buffer.append(l)
-          lengths[i + 1] = len(l) + 1
-        # No new line on last line
-        lengths[-1] -= 1
-      else:
-        lengths = [0]
-      self.cumulative_lines.initialize(lengths)
-      self.saved_buffer = buffer[:]
+      # TODO
+      write lines
       self.lock.release()
       self.buffer_event.set()
 
@@ -427,117 +298,10 @@ class Document(Buffer):
     if comments:
       Task(self.showComments(cursor, comments))
 
-    # skip if not yet initialized
-    if self.saved_buffer is None:
-      self.log.debug("writeBuffer: -> buffer not yet initialized")
+    # TODO
+    ops = text buildOps
+    if not ops:
       return
-
-    buffer = self.buffer[:]
-
-    # nothing to do
-    if len(self.saved_buffer) == len(buffer):
-      skip = True
-      for ol, nl in zip(self.saved_buffer, buffer):
-        if hash(ol) != hash(nl):
-          skip = False
-          break
-      if skip:
-        self.log.debug("writeBuffer: -> done (hashtest says nothing to do)")
-        return
-
-    # cumulative position of line
-    pos = deepcopy(self.cumulative_lines)
-
-    # first calculate diff row-wise
-    ops = []
-    S = SequenceMatcher(
-        None, self.saved_buffer, buffer, autojunk=False).get_opcodes()
-    for op in S:
-      if op[0] == "equal":
-        continue
-
-      # inserting a whole row
-      elif op[0] == "insert":
-        self.log.debug(f"Insert")
-        selection = buffer[op[3]:op[4]]
-        s = "\n".join(selection)
-        for l in selection[::-1]:
-          if op[3] == self.cumulative_lines.last_index:
-            if op[3]:
-              self.cumulative_lines[op[3] - 1] += 1
-            self.cumulative_lines.insert(op[3], len(l))
-          else:
-            self.cumulative_lines.insert(op[3], len(l) + 1)
-        if op[1] >= len(self.saved_buffer):
-          p = pos[-1] - 1
-          s = "\n" + s
-        else:
-          p = pos[op[1]]
-          s = s + "\n"
-        ops.append({"p": p, "i": s})
-
-      # deleting a whole row
-      elif op[0] == "delete":
-        self.log.debug(f"Delete")
-        s = "\n".join(self.saved_buffer[op[1]:op[2]])
-        for i in range(op[1], op[2]):
-          del self.cumulative_lines[op[3]]
-          # If last line previous line needs to remove new line char
-          if op[3] and op[3] == self.cumulative_lines.last_index:
-            self.cumulative_lines[op[3] - 1] -= 1
-        if op[1] == len(buffer):
-          p = pos[-(op[2] - op[1]) - 1] - 1
-          s = "\n" + s
-        else:
-          p = pos[op[1]]
-          s = s + "\n"
-        ops.append({"p": p, "d": s})
-
-      # for replace, check in more detail what has changed
-      elif op[0] == "replace":
-        self.log.debug(f"replace")
-        old = "\n".join(self.saved_buffer[op[1]:op[2]])
-        selection = buffer[op[3]:op[4]]
-        new = "\n".join(selection)
-        # Since Sequence Matcher works in order, we need to use the indices on
-        # the buffer.
-        for i, s in zip(range(op[3], op[4]), selection):
-          # Account for new lines at end of document
-          if i == self.cumulative_lines.last_index:
-            self.cumulative_lines[i] = len(s)
-          else:
-            self.cumulative_lines[i] = len(s) + 1
-
-        S2 = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-        for op2 in S2:
-          # relative to document end
-          linestart = pos[op[1]]
-
-          if op2[0] == "equal":
-            continue
-
-          elif op2[0] == "replace":
-            ops.append({"p": linestart + op2[1], "i": new[op2[3]:op2[4]]})
-            ops.append({"p": linestart + op2[1], "d": old[op2[1]:op2[2]]})
-
-          elif op2[0] == "insert":
-            ops.append({"p": linestart + op2[1], "i": new[op2[3]:op2[4]]})
-
-          elif op2[0] == "delete":
-            ops.append({"p": linestart + op2[1], "d": old[op2[1]:op2[2]]})
-
-    # nothing to do
-    if len(ops) == 0:
-      self.log.debug(
-          "writeBuffer: -> done (sequencematcher says nothing to do)")
-      return
-
-    # reverse, as last op should be applied first
-    ops.reverse()
-
-    # update saved buffer & send command
-    self.saved_buffer = buffer
-    self.log.debug(" -> sending ops")
 
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
     Task(
@@ -565,83 +329,14 @@ class Document(Buffer):
         for op in ops:
           self.log.debug(f"the op {op} and {'c' in op}")
 
-          # delete char and lines
-          if 'd' in op:
-            p = op['p']
-            s = op['d']
-            self._remove(self.buffer, p, s)
-
-          # add characters and newlines
-          if 'i' in op:
-            p = op['p']
-            s = op['i']
-            self._insert(self.buffer, p, s)
+          text.applyOp(self.buffer)
 
           # add comment
           if 'c' in op:
-            thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
-            self.threads[op['t']] = thread
             Task(self.highlightComments(comments))
-        self.saved_buffer = self.buffer[:]
+
+        text.updateBuffer(self.buffer[:])
       except Exception as e:
         self.log.debug(f"{op} failed: {e}")
       finally:
         self.lock.release()
-
-  # inster string at given position
-  def _insert(self, buffer, start, string):
-    p_linestart = 0
-
-    # find start line
-    # TODO replace with search
-    for line_i, line in enumerate(buffer):
-
-      # start is not yet there
-      if start >= p_linestart + len(line) + 1:
-        p_linestart += len(line) + 1
-      else:
-        break
-
-    # convert format to array-style
-    string = string.split("\n")
-
-    # append end of current line to last line of new line
-    string[-1] += line[(start - p_linestart):]
-
-    # include string at start position
-    buffer[line_i] = line[:(start - p_linestart)] + string[0]
-
-    # append rest to next line
-    if len(string) > 1:
-      buffer[line_i + 1:line_i + 1] = string[1:]
-
-  # remove len chars from pos
-  def _remove(self, buffer, start, string):
-    p_linestart = 0
-
-    # find start line
-    # TODO replace with search
-    for line_i, line in enumerate(buffer):
-
-      # start is not yet there
-      if start >= p_linestart + len(line) + 1:
-        p_linestart += len(line) + 1
-      else:
-        break
-
-    # convert format to array-style
-    string = string.split("\n")
-    new_string = ""
-
-    # remove first line from found position
-    new_string = line[:(start - p_linestart)]
-
-    # add rest of last line to new string
-    if len(string) == 1:
-      new_string += buffer[line_i + len(string) - 1][(start - p_linestart) +
-                                                     len(string[-1]):]
-    else:
-      new_string += buffer[line_i + len(string) - 1][len(string[-1]):]
-
-    # overwrite buffer
-    buffer[line_i:line_i + len(string)] = [new_string]
