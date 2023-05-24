@@ -19,13 +19,18 @@ highlight_groups = [
 ]
 highlight = namedtuple("Highlight", ["comment", "double", "pending"])
 
+# TODO:
+# Ok then
+# - document fix up
+#   - Fenwick tree
+#   - Interval updates
 
 class Document(Buffer):
   allBuffers = allBuffers
 
   def __init__(self, nvim, project, path, data, new_buffer=True):
     self.data = data
-    self.name = Document.getName(path)
+    self.name = Document.getName(path, project.data)
     self.ext = Document.getExt(self.data)
     self.nonce = f"{time.time()}"
     self.project = project
@@ -49,7 +54,7 @@ class Document(Buffer):
     self.buffer_event = asyncio.Event()
     self.cursors = {}
 
-    # self.cumulative_lines = FenwickTree()
+    self.cumulative_lines2 = FenwickTree()
     self.cumulative_lines = NaiveAccumulator()
 
 
@@ -122,7 +127,6 @@ class Document(Buffer):
         self.buffer.api.add_highlight(highlight, group, line_num, 0, -1)
       self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
 
-
   @property
   def id(self):
     return self.data["_id"]
@@ -136,8 +140,8 @@ class Document(Buffer):
     self.data["version"] = v
 
   @staticmethod
-  def getName(path):
-    return "/".join([p["name"] for p in path])
+  def getName(path, project_data):
+    return "/".join([project_data["name"]] + [p["name"] for p in path[1:]])
 
   @staticmethod
   def getExt(document):
@@ -156,13 +160,12 @@ class Document(Buffer):
     buffer_cpy = self.saved_buffer[:]
     current_len = 0
     for i, row in enumerate(buffer_cpy):
-      self.log.debug(f"{current_len, self.cumulative_lines[i]}")
       current_len += len(row) + 1
     current_len -= 1
     tohash = ("blob " + str(current_len) + "\x00")
     self.log.debug(f"Lengths {current_len, self.cumulative_lines[-1]}")
+    self.log.debug(f"Lengths {current_len, self.cumulative_lines2[-1]}")
 
-    # current_len = self.cumulative_lines[-1]
     tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
     sha = sha1()
     sha.update(tohash.encode())
@@ -333,13 +336,6 @@ class Document(Buffer):
       self.comment_selection = IntervalTree()
 
     cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
-    self.log.debug(
-        f"Show comments {cursor}, {cursor_offset}, {[t for t in self.thread_intervals]}"
-    )
-    self.log.debug(
-        f"Sanity {[self.cumulative_lines[i] for i in range(cursor[0])]} {self.cumulative_lines.arr} "
-    )
-
     threads = self.thread_intervals[cursor_offset]
 
     previously_active = self.comments_active
@@ -348,7 +344,6 @@ class Document(Buffer):
       if previously_active:
         comment_buffer.clear()
       return
-    self.log.debug(f"found threads {threads}")
     comment_buffer.render(self.project, threads)
 
   def clearRemoteCursor(self, remote_id):
@@ -357,7 +352,6 @@ class Document(Buffer):
       self.buffer.api.clear_namespace(highlight, 0, -1)
 
   def updateRemoteCursor(self, cursor):
-    self.log.debug(f"updateRemoteCursor {cursor}")
     # Don't draw the current cursor
     # Client id if remote, id if local
     if not cursor.get("id") or cursor.get(
@@ -373,9 +367,6 @@ class Document(Buffer):
       else:
         highlight = self.cursors[cursor["id"]]
         self.buffer.api.clear_namespace(highlight, 0, -1)
-      self.log.debug(
-          f"highlighting {cursor} 'CursorGroup', {(cursor['row'], cursor['column'], cursor['column'])}"
-      )
       # Handle case that cursor is at end of line
       # Guard against being on the last line
       row = min(cursor["row"], len(tmp_buffer) - 1)
@@ -408,16 +399,19 @@ class Document(Buffer):
     @Task(self.lock.acquire).fn(self.buffer, lines, vim=True)
     def writeLines(buffer, lines):
       buffer[:] = []
-      buffer[0] = lines[0]
-      lengths = [
-          0,
-      ] * len(lines)
-      lengths[0] = len(lines[0]) + 1
-      for i, l in enumerate(lines[1:]):
-        buffer.append(l)
-        lengths[i + 1] = len(l) + 1
-      # No new line on last line
-      lengths[-1] -= 1
+      if lines:
+        buffer[0] = lines[0]
+        lengths = [
+            0,
+        ] * len(lines)
+        lengths[0] = len(lines[0]) + 1
+        for i, l in enumerate(lines[1:]):
+          buffer.append(l)
+          lengths[i + 1] = len(l) + 1
+        # No new line on last line
+        lengths[-1] -= 1
+      else:
+        lengths = [0]
       self.cumulative_lines.initialize(lengths)
       self.saved_buffer = buffer[:]
       self.lock.release()
@@ -575,14 +569,12 @@ class Document(Buffer):
           if 'd' in op:
             p = op['p']
             s = op['d']
-            self._remove(self.saved_buffer, p, s)
             self._remove(self.buffer, p, s)
 
           # add characters and newlines
           if 'i' in op:
             p = op['p']
             s = op['i']
-            self._insert(self.saved_buffer, p, s)
             self._insert(self.buffer, p, s)
 
           # add comment
@@ -590,6 +582,7 @@ class Document(Buffer):
             thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
             self.threads[op['t']] = thread
             Task(self.highlightComments(comments))
+        self.saved_buffer = self.buffer[:]
       except Exception as e:
         self.log.debug(f"{op} failed: {e}")
       finally:
@@ -601,7 +594,7 @@ class Document(Buffer):
 
     # find start line
     # TODO replace with search
-    for line_i, line in enumerate(self.buffer):
+    for line_i, line in enumerate(buffer):
 
       # start is not yet there
       if start >= p_linestart + len(line) + 1:

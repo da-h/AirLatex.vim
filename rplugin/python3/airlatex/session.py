@@ -48,8 +48,8 @@ class AirLatexSession:
     projectList.sort(key=lambda p: p.get("lastUpdated"), reverse=True)
     return projectList
 
-  # TODO try to remove async
-  async def _getWebSocketURL(self):
+  @property
+  def webSocketURL(self):
     # Generating timestamp
     timestamp = generateTimeStamp()
 
@@ -155,7 +155,7 @@ class AirLatexSession:
       data = self.project_data[project_id]
       data.update(project)
 
-      socket = await self._getWebSocketURL()
+      socket = self.webSocketURL
       # If it exists, just trigger refresh, otherwise create a project.
       if self.projects.get(project_id):
         self.projects[project_id].refresh(

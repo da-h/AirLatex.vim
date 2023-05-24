@@ -551,11 +551,12 @@ class AirLatexProject:
         json={"message": message})
     try:
       assert response.status_code == 200, f"Bad status code {response.status_code}"
-      self.log.debug("Synced.")
+      return True, "Synced."
     except Exception as e:
       self.log.debug(traceback.format_exc())
       self.log.debug("\nError in sync:")
       self.log.debug(f"{response.content}\n---\n{e}")
+    return False, "Error, check logs."
 
   async def compile(self):
     self.log.debug(f"Compiling. {str(self.data)}")

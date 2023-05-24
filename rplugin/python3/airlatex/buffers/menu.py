@@ -34,12 +34,6 @@ class MenuBuffer(Buffer):
       self.lock.release()
 
   def write(self):
-    # TODO:
-    # Ok then
-    # - document fix up
-    #   - Fenwick tree
-    #   - Interval updates
-
     for i, ((line, _), (prev, _)) in enumerate(zip(self.menu.entries,
                                                    self.menu.previous)):
       if line != prev:

@@ -59,7 +59,7 @@ class AsyncDecorator(_VimDecorator):
   def __init__(self, fn, *args):
     self.fn = fn
     self.args = args
-    self.recurse = False
+    # self.registered = {}
 
   def _build_async_call(self, channel):
 
@@ -75,13 +75,11 @@ class AsyncDecorator(_VimDecorator):
   def __get__(self, instance, cls):
     """Required to support class instances"""
     # Some type of static or meta call is goint on.
+    # NOTE: Use objects with derived classes as singletons
+    # Weird things will happen otherwise!
     if not instance:
       return cls.__bases__[0].__get__(None, None, cls)
-    if self.recurse:
-      return self
-    self.recurse = True
-    self.fn = functools.partial(self.fn, instance)
-    return self
+    return AsyncDecorator(functools.partial(self.fn, instance), *self.args)
 
 
 class _ChainHelper(_VimDecorator):

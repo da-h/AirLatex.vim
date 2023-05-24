@@ -69,7 +69,7 @@ class Menu():
 
   def space(self, n):
     for _ in range(n):
-      self.add_entry('-')
+      self.add_entry('')
 
   @AsyncDecorator
   def updateEntryByKey(self, key, line):

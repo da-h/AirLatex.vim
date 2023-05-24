@@ -107,14 +107,14 @@ class Sidebar(ActiveMenuBuffer):
       # list project structure
       if project.get("open"):
         menu.add_entry(
-            f"  {self.symbol_open} {project['name']}",
-            menu.Item.Project(project))
+            f"{self.symbol_open} {project['name']}",
+            menu.Item.Project(project), indent=1)
         for folder in project.get("rootFolder", [None]):
-          self._listProjectStructure([folder], project, menu, indent=6)
+          self._listProjectStructure([folder], project, menu, indent=3)
       else:
         menu.add_entry(
-            f"  {self.symbol_closed} {project['name']}",
-            menu.Item.Project(project))
+            f"{self.symbol_closed} {project['name']}",
+            menu.Item.Project(project), indent=1)
 
       # if cursor[0] == len(menu.entries):
       #   menu.from_dictionary(
@@ -134,9 +134,7 @@ class Sidebar(ActiveMenuBuffer):
     menu.space(1)
     menu.from_dictionary(
         keys=[
-            (" Retry       : enter",),
             ("status", f" Status      : {self.status}",),
-            (" Quit All    : enter",),
             (f" Last Update : {strftime('%H:%M:%S', gmtime())}",),
         ],
         data={})
@@ -167,14 +165,14 @@ class Sidebar(ActiveMenuBuffer):
     for doc in root["docs"]:
       menu.add_entry(doc['name'],
                     menu.Item.File(project, tree + [doc], doc),
-                   indent=indent)
+                   indent=indent + 2)
 
     # list files (other files)
     if root.get("fileRefs"):
-      menu.add_entry("file Refs:", indent=indent)
+      menu.add_entry("file Refs:", indent=indent + 2)
       for file in root["fileRefs"]:
         file["type"] = "fileRef"
-        menu.add_entry(f" - {file['name']}", indent=indent)
+        menu.add_entry(f" - {file['name']}", indent=indent + 2)
 
   @pynvimCatchException
   def registerCursorActions(self, MenuItem, handle):
@@ -219,7 +217,7 @@ class Sidebar(ActiveMenuBuffer):
 
     @handle(MenuItem.File)
     def join(project_data, path, doc):
-      name = Document.getName(path)
+      name = Document.getName(path, project_data)
       for buffer, document in Document.allBuffers.items():
         self.log.debug(f"{name} vs {document.name}")
         if name == document.name:

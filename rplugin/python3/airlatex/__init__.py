@@ -112,7 +112,7 @@ class AirLatex():
   def compile(self, args):
     buffer = self.nvim.current.buffer
     if buffer in Document.allBuffers:
-      Document.allBuffers[buffer].project.compile()
+      Task(Document.allBuffers[buffer].project.compile())
 
   @pynvim.function('AirLatex_GitSync', sync=True)
   def syncGit(self, args):
@@ -121,7 +121,10 @@ class AirLatex():
       message, = args
       while not message:
         message = self.nvim.funcs.input('Commit Message: ')
-      Document.allBuffers[buffer].project.syncGit(message)
+      @Task.Fn()
+      async def _trySync():
+        status, msg = await Document.allBuffers[buffer].project.syncGit(message)
+        Task(self.nvim.command, f"echo '{msg}'", vim=True)
 
   @pynvim.function('AirLatexToggle', sync=True)
   def toggle(self, args):
@@ -194,19 +197,28 @@ class AirLatex():
     # Probs to session and Document
     async def get_joined_doc(project):
       await project.join_event.wait()
-      for folder in project.data["rootFolder"]:
-        for doc in folder["docs"]:
+      def recurse(root, path):
+        self.log.debug(f"{root}")
+        for doc in root["docs"]:
           if did == doc["_id"]:
             self.log.debug(f"Returning data {doc, project}")
-            return doc, project
-      if not found:
-        self.log.debug(f"Doc not found..?")
-        raise Exception(f"{pid, did}")
+            return path + [doc], doc, project
+        for f in root["folders"]:
+          return recurse(f, path + [f])
+      for root in project.data["rootFolder"]:
+        data = recurse(root, [root])
+        if data:
+          break
+
+      if not data:
+        raise Exception(f"Doc not found")
+      return data
 
     # Rejoin vim thread
     @AsyncDecorator
-    def build_buffer(doc, project):
-      document = Document(self.nvim, project, [doc], doc, new_buffer=False)
+    def build_buffer(path, doc, project):
+      self.log.debug(f"{path}")
+      document = Document(self.nvim, project, path, doc, new_buffer=False)
       Task(project.joinDocument(document))
       return document.buffer_event.wait
 
