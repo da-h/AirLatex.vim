@@ -6,14 +6,17 @@ class Threads():
     self.selection = IntervalTree()
     self.threads = IntervalTree()
     self.data = {}
+    self.active = True
 
   def clear(self):
     self.threads.clear()
 
   # Should check
-  def get(self, text, cursor):
+  def activate(self, text, cursor):
     cursor_offset = text.lines.position(cursor[0] - 1, cursor[1])
-    return self.threads[cursor_offset]
+    threads = self.threads[cursor_offset]
+    self.active = bool(threads)
+    return threads
 
   def create(self, text, comments, thread):
     if not comments:

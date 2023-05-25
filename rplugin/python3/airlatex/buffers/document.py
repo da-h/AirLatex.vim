@@ -232,7 +232,10 @@ class Document(Buffer):
   async def showComments(self, cursor, comment_buffer):
     if comment_buffer.drafting or comment_buffer.creation:
       return
-    if not previous_state:
+
+    active = self.threads.active
+    threads = self.threads.activate(self.text, cursor)
+    if not active:
       Task(
           self.buffer.api.clear_namespace,
           self.highlight.pending,
@@ -240,9 +243,9 @@ class Document(Buffer):
           -1,
           vim=True)
       self.threads.selection.clear()
-
-    thread = self.threads.get(text, cursor)
-    if not threads:
+      if not threads:
+        return
+    elif not threads:
       comment_buffer.clear()
       return
     comment_buffer.render(self.project, threads)
