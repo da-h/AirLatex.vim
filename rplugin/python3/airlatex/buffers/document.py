@@ -26,6 +26,7 @@ highlight = namedtuple("Highlight", ["comment", "double", "pending"])
 #   - Fenwick tree
 #   - Interval updates
 
+
 class Document(Buffer):
   allBuffers = allBuffers
 
@@ -50,7 +51,8 @@ class Document(Buffer):
   def buildBuffer(self, new_buffer=True):
 
     if new_buffer:
-      self.nvim.command(f"""
+      self.nvim.command(
+          f"""
         wincmd w
         enew
         file {self.name}
@@ -175,11 +177,11 @@ class Document(Buffer):
 
   def markComment(self, *lineinfo):
     if self.threads.selection.is_empty():
-      self.threads.select(text, *lineinfo)
+      self.threads.select(self.text, *lineinfo)
       self.highlightRange(
           self.highlight.pending, self.highlight_names.pending, *lineinfo)
 
-  def getCommentPosition(self, next = False, prev = False):
+  def getCommentPosition(self, next=False, prev=False):
     if next == prev:
       return (-1, -1), 0
     cursor = self.nvim.current.window.cursor
@@ -191,7 +193,7 @@ class Document(Buffer):
     if offset == 0:
       return (-1, -1), 0
     line, col, *_ = self.text.query(pos, pos + 1)
-    return (line + 1, col) , offset
+    return (line + 1, col), offset
 
   @AsyncDecorator
   def publishComment(self, thread, count, content):
@@ -258,8 +260,7 @@ class Document(Buffer):
   def updateRemoteCursor(self, cursor):
     # Don't draw the current cursor
     # Client id if remote, id if local
-    if not cursor.get("id") or cursor.get(
-        "id") == self.project.session_id:
+    if not cursor.get("id") or cursor.get("id") == self.project.session_id:
       return
 
     @Task.Fn(cursor, vim=True)
@@ -290,8 +291,10 @@ class Document(Buffer):
       self.lock.release()
       self.buffer_event.set()
 
-  def writeBuffer(self, comments=None):
+  def broadcastUpdates(self, comments=None):
     self.log.debug("writeBuffer: calculating changes to send")
+    if not self.buffer_event.is_set():
+      return
 
     # update CursorPosition
     cursor = self.nvim.current.window.cursor
@@ -304,9 +307,7 @@ class Document(Buffer):
       return
 
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
-    Task(
-        self.project.sendOps(
-            self.id, self.text.content_hash, ops, track))
+    Task(self.project.sendOps(self.id, self.text.content_hash, ops, track))
 
   def applyUpdate(self, packet, comments):
     self.log.debug("apply server updates to buffer")

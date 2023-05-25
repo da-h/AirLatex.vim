@@ -58,7 +58,7 @@ class Text():
 
   def buildOps(self, buffer):
     # skip if not yet initialized
-    if self.previous is None:
+    if not self.previous:
       return []
 
     # nothing to do

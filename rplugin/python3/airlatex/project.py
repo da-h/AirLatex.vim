@@ -417,9 +417,9 @@ class AirLatexProject:
             self.comments = await self.getComments()
             thread_id = data["args"][0]
             for doc in self.documents.values():
-              if thread_id in doc.threads:
+              if thread_id in doc.threads.data:
                 if data["name"] in ("resolve-thread", "reopen-thread"):
-                  doc.threads[thread_id]["resolved"] = (
+                  doc.threads.data[thread_id]["resolved"] = (
                       "resolve-thread" == data["name"])
                 await doc.highlightComments(self.comments)
             Task(self.session.comments.triggerRefresh())
@@ -475,7 +475,7 @@ class AirLatexProject:
               # It's a comment!
               if 'c' in op:
                 del self.pending_comments[op['t']]
-                self.documents[id].threads[op['t']] = {"id": op['t'], "op": op}
+                self.documents[id].threads.data[op['t']] = {"id": op['t'], "op": op}
                 contains_comments = True
             if contains_comments:
               self.comments = await self.getComments()
@@ -622,7 +622,7 @@ class AirLatexProject:
 
   def createComment(self, thread, doc_id, content):
     doc = self.documents[doc_id]
-    interval = doc.comment_selection[:].pop()
+    interval = doc.threads.selection[:].pop()
     count = interval.begin
     highlight = "\n".join(doc.buffer[:])[interval.begin:interval.end]
     if not content or not highlight:

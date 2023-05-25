@@ -63,7 +63,7 @@ class Threads():
         overlapping_ranges.add(overlapping_range)
     return overlapping_ranges
 
-  def getPrevPosition(self, offset):
+  def getNextPosition(self, offset):
     positions = self.threads[offset + 1:] - self.threads[offset]
     offset = len(self.threads[:]) - len(positions) + 1
     if not positions:
@@ -73,7 +73,7 @@ class Threads():
       return (-1, -1), 0
     return min(positions).begin, offset
 
-  def getNextPosition(self, offset):
+  def getPrevPosition(self, offset):
     positions = self.threads[:offset] - self.threads[offset]
     offset = len(positions)
     if not positions:

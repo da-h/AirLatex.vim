@@ -1,5 +1,8 @@
 __pycache__
-*_rplugin
 AirLatex.log
 todo.txt
 done.txt
+
+# Error logs from NVIM_PYTHON_LOG_FILE
+*_rplugin
+*_py3_script

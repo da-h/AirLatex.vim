@@ -36,7 +36,8 @@ class Sidebar(ActiveMenuBuffer):
   @pynvimCatchException
   def buildBuffer(self):
     # Make the window
-    self.command("""
+    self.command(
+        """
       let splitSize = g:AirLatexWinSize
       let splitLocation = g:AirLatexWinPos ==# "left" ? "topleft " : "botright "
       exec splitLocation . 'vertical ' . splitSize . ' new'
@@ -45,7 +46,8 @@ class Sidebar(ActiveMenuBuffer):
     buffer = self.nvim.current.buffer
 
     # throwaway buffer options (thanks NERDTree)
-    self.command("""
+    self.command(
+        """
       file AirLatex
       setlocal winfixwidth
       setlocal noswapfile
@@ -67,7 +69,8 @@ class Sidebar(ActiveMenuBuffer):
     # Register Mappings
     # search('▸', 'bW')<CR>
     jump = "<bar> :call AirLatex_SidebarRefresh() <enter> <bar> ^f▸"
-    self.command(f"""
+    self.command(
+        f"""
       nnoremap <silent> <buffer> q :q <enter>
       au CursorMoved <buffer> call AirLatex_SidebarRefresh()
       nnoremap <silent> <buffer> <enter> :call AirLatex_ProjectEnter() <enter>
@@ -108,13 +111,15 @@ class Sidebar(ActiveMenuBuffer):
       if project.get("open"):
         menu.add_entry(
             f"{self.symbol_open} {project['name']}",
-            menu.Item.Project(project), indent=1)
+            menu.Item.Project(project),
+            indent=1)
         for folder in project.get("rootFolder", [None]):
           self._listProjectStructure([folder], project, menu, indent=3)
       else:
         menu.add_entry(
             f"{self.symbol_closed} {project['name']}",
-            menu.Item.Project(project), indent=1)
+            menu.Item.Project(project),
+            indent=1)
 
       # if cursor[0] == len(menu.entries):
       #   menu.from_dictionary(
@@ -134,7 +139,10 @@ class Sidebar(ActiveMenuBuffer):
     menu.space(1)
     menu.from_dictionary(
         keys=[
-            ("status", f" Status      : {self.status}",),
+            (
+                "status",
+                f" Status      : {self.status}",
+            ),
             (f" Last Update : {strftime('%H:%M:%S', gmtime())}",),
         ],
         data={})
@@ -154,18 +162,23 @@ class Sidebar(ActiveMenuBuffer):
 
     for folder in root["folders"]:
       if folder.get("open"):
-        menu.add_entry(f"{self.symbol_open} {folder['name']}",
-                menu.Item.Folder(folder), indent=indent)
-        self._listProjectStructure(tree + [folder], project, menu, indent=indent + 2)
+        menu.add_entry(
+            f"{self.symbol_open} {folder['name']}",
+            menu.Item.Folder(folder),
+            indent=indent)
+        self._listProjectStructure(
+            tree + [folder], project, menu, indent=indent + 2)
       else:
-        menu.add_entry(f"{self.symbol_closed} {folder['name']}",
-                      menu.Item.Folder(folder),
-                      indent=indent)
+        menu.add_entry(
+            f"{self.symbol_closed} {folder['name']}",
+            menu.Item.Folder(folder),
+            indent=indent)
 
     for doc in root["docs"]:
-      menu.add_entry(doc['name'],
-                    menu.Item.File(project, tree + [doc], doc),
-                   indent=indent + 2)
+      menu.add_entry(
+          doc['name'],
+          menu.Item.File(project, tree + [doc], doc),
+          indent=indent + 2)
 
     # list files (other files)
     if root.get("fileRefs"):
@@ -225,9 +238,11 @@ class Sidebar(ActiveMenuBuffer):
           self.command(f'buffer {buffer.number}')
           return
       project = self.session.projects.get(project_data.get('id'))
+
       @Task.Fn()
       async def _join():
         await self.lock.acquire()
+
         @Task.Fn(vim=True)
         def _callback():
           document = Document(self.nvim, project, path, doc)
@@ -242,4 +257,4 @@ class Sidebar(ActiveMenuBuffer):
     #await self.lock.acquire()
     self.status = msg
     return Task(self.menu.updateEntryByKey, "status",
-                self.status)#.then(self.triggerRefresh)#.then(self.lock.release)
+                self.status)  #.then(self.triggerRefresh)#.then(self.lock.release)
