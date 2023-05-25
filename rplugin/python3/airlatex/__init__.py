@@ -170,7 +170,7 @@ class AirLatex():
       self.nvim.current.window.cursor = pos
       self.nvim.command(f"let g:AirLatexCommentCount={offset}")
       self.nvim.command(
-          f"echo 'Comment {offset}/{len(buffer.thread_intervals)}'")
+          f"echo 'Comment {offset}/{len(buffer.threads.threads)}'")
 
   @pynvim.function('AirLatex_PrevCommentPosition')
   def prevCommentPosition(self, args):

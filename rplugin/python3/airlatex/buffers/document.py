@@ -9,7 +9,8 @@ from intervaltree import Interval, IntervalTree
 
 from airlatex.lib.task import AsyncDecorator, Task
 from airlatex.buffers.buffer import Buffer
-from airlatex.buffers.controllers import Text()
+from airlatex.buffers.controllers.text import Text
+from airlatex.buffers.controllers.thread import Threads
 
 if "allBuffers" not in globals():
   allBuffers = {}
@@ -44,6 +45,7 @@ class Document(Buffer):
         *map(self.nvim.api.create_namespace, highlight_groups))
 
     self.text = Text()
+    self.threads = Threads()
 
   def buildBuffer(self, new_buffer=True):
 
@@ -156,7 +158,7 @@ class Document(Buffer):
           set syntax=off
           buffer {buffer.number}
         """)
-        self.thread_intervals.clear()
+        self.threads.clear()
       finally:
         self.lock.release()
 
@@ -172,14 +174,24 @@ class Document(Buffer):
       self.buffer.api.add_highlight(highlight, group, end_line, 0, end_col)
 
   def markComment(self, *lineinfo):
-      #TODO
+    if self.threads.selection.is_empty():
+      self.threads.select(text, *lineinfo)
       self.highlightRange(
           self.highlight.pending, self.highlight_names.pending, *lineinfo)
 
-  def getCommentPosition(self, next: bool = False, prev: bool = False):
-    # TODO
+  def getCommentPosition(self, next = False, prev = False):
+    if next == prev:
+      return (-1, -1), 0
     cursor = self.nvim.current.window.cursor
-    cursor_offset = self.cumulative_lines.position(cursor[0] - 1, cursor[1])
+    cursor_offset = self.text.lines.position(cursor[0] - 1, cursor[1])
+    if next:
+      pos, offset = self.threads.getNextPosition(cursor_offset)
+    else:
+      pos, offset = self.threads.getPrevPosition(cursor_offset)
+    if offset == 0:
+      return (-1, -1), 0
+    line, col, *_ = self.text.query(pos, pos + 1)
+    return (line + 1, col) , offset
 
   @AsyncDecorator
   def publishComment(self, thread, count, content):
@@ -194,9 +206,10 @@ class Document(Buffer):
         }])
 
   def highlightComment(self, comments, thread):
-    self.highlightRange(
-        self.highlight.comment, self.highlight_names.comment, start_line,
-        start_col, end_line, end_col)
+    created, lineinfo = self.threads.create(self.text, comments, thread)
+    if created:
+      self.highlightRange(
+          self.highlight.comment, self.highlight_names.comment, *lineinfo)
 
   async def highlightComments(self, comments, threads=None):
     @Task(self.buffer_event.wait).fn(vim=True)
@@ -204,14 +217,15 @@ class Document(Buffer):
       # Clear any existing highlights
       self.buffer.api.clear_namespace(self.highlight.comment, 0, -1)
       self.buffer.api.clear_namespace(self.highlight.double, 0, -1)
-      self.thread_intervals.clear()
+      self.threads.clear()
       if threads:
-        self.threads = {thread["id"]: thread for thread in threads}
-      for thread in self.threads.values():
+        self.threads.data = {thread["id"]: thread for thread in threads}
+      for thread in self.threads.data.values():
         self.highlightComment(comments, thread)
       # Apply double highlights. Note we could extend this to the nth case, but
       # 2 seems fine
-      for :#TODO
+      for overlap in self.threads.doubled:
+        lineinfo = self.text.query(overlap.begin, overlap.end)
         self.highlightRange(
             self.highlight.double, self.highlight_names.double, *lineinfo)
 
@@ -225,10 +239,9 @@ class Document(Buffer):
           0,
           -1,
           vim=True)
-      self.comment_selection = IntervalTree()
+      self.threads.selection.clear()
 
-    # TODO
-    thread = get threads
+    thread = self.threads.get(text, cursor)
     if not threads:
       comment_buffer.clear()
       return
@@ -248,7 +261,7 @@ class Document(Buffer):
 
     @Task.Fn(cursor, vim=True)
     def handle_cursor(cursor):
-      tmp_buffer = self.buffer[:]
+      buffer = self.buffer[:]
       if cursor["id"] not in self.cursors:
         highlight = self.nvim.api.create_namespace(cursor["id"])
         self.cursors[cursor["id"]] = highlight
@@ -257,8 +270,8 @@ class Document(Buffer):
         self.buffer.api.clear_namespace(highlight, 0, -1)
       # Handle case that cursor is at end of line
       # Guard against being on the last line
-      row = min(cursor["row"], len(tmp_buffer) - 1)
-      if len(tmp_buffer[row]) == cursor["column"]:
+      row = min(cursor["row"], len(buffer) - 1)
+      if len(buffer[row]) == cursor["column"]:
         self.buffer.api.add_highlight(
             highlight, 'CursorGroup', cursor["row"],
             max(cursor["column"] - 1, 0), cursor["column"])
@@ -268,11 +281,9 @@ class Document(Buffer):
             cursor["column"] + 1)
 
   def write(self, lines):
-
     @Task(self.lock.acquire).fn(self.buffer, lines, vim=True)
-    def writeLines(buffer, lines):
-      # TODO
-      write lines
+    def _write(buffer, lines):
+      self.text.write(buffer, lines)
       self.lock.release()
       self.buffer_event.set()
 
@@ -282,19 +293,17 @@ class Document(Buffer):
     # update CursorPosition
     cursor = self.nvim.current.window.cursor
     Task(self.project.updateCursor(self.data, cursor))
-
     if comments:
       Task(self.showComments(cursor, comments))
 
-    # TODO
-    ops = text buildOps
+    ops = self.text.buildOps(self.buffer[:])
     if not ops:
       return
 
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
     Task(
         self.project.sendOps(
-            self.id, self.content_hash, ops, track))
+            self.id, self.text.content_hash, ops, track))
 
   def applyUpdate(self, packet, comments):
     self.log.debug("apply server updates to buffer")
@@ -316,14 +325,14 @@ class Document(Buffer):
       try:
         for op in ops:
           self.log.debug(f"the op {op} and {'c' in op}")
-
-          text applyOp(self.buffer)
-
+          self.text.applyOp(self.buffer, op)
           # add comment
           if 'c' in op:
+            thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
+            self.threads.data[op['t']] = thread
             Task(self.highlightComments(comments))
 
-        text.updateBuffer(self.buffer[:])
+        self.text.updateBuffer(self.buffer[:])
       except Exception as e:
         self.log.debug(f"{op} failed: {e}")
       finally:
