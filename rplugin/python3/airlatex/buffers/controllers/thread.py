@@ -65,20 +65,20 @@ class Threads():
 
   def getNextPosition(self, offset):
     positions = self.threads[offset + 1:] - self.threads[offset]
-    offset = len(self.threads[:]) - len(positions) + 1
+    count = len(self.threads[:]) - len(positions) + 1
     if not positions:
       positions = self.threads[:offset] - self.threads[offset]
-      offset = 1
+      count = 1
     if not positions:
       return (-1, -1), 0
-    return min(positions).begin, offset
+    return min(positions).begin, count
 
   def getPrevPosition(self, offset):
     positions = self.threads[:offset] - self.threads[offset]
-    offset = len(positions)
+    count = len(positions)
     if not positions:
       positions = self.threads[offset + 1:] - self.threads[offset]
-      offset = 1
+      count = 1
     if not positions:
       return (-1, -1), 0
-    return max(positions).begin, offset
+    return max(positions).begin, count

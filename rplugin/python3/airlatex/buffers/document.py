@@ -190,6 +190,7 @@ class Document(Buffer):
       pos, offset = self.threads.getNextPosition(cursor_offset)
     else:
       pos, offset = self.threads.getPrevPosition(cursor_offset)
+    self.log.debug(f"TRY NEXT {pos, offset}")
     if offset == 0:
       return (-1, -1), 0
     line, col, *_ = self.text.query(pos, pos + 1)

@@ -33,6 +33,11 @@ class Text():
   def query(self, start, end):
     start_line, start_col = self.lines.search(start)
     end_line, end_col = self.lines.search(end)
+    if start_line < 0:
+      start_line = end_line
+    if self.lines[start_line] + start_col == self.lines[end_line]:
+      start_line += 1
+      start_col = 0
     return start_line, start_col, end_line, end_col
 
   def updateBuffer(self, buffer):
