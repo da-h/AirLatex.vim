@@ -6,6 +6,7 @@ from hashlib import sha1
 
 from copy import deepcopy
 
+from logging import getLogger
 
 class Text():
 
@@ -16,16 +17,7 @@ class Text():
   @property
   def content_hash(self):
     # compute sha1-hash of current buffer
-    # compute sha1-hash of current buffer
-    buffer_cpy = self.previous[:]
-    current_len = 0
-    for i, row in enumerate(buffer_cpy):
-      current_len += len(row) + 1
-    current_len -= 1
-    tohash = ("blob " + str(current_len) + "\x00")
-    # self.log.debug(f"Lengths {current_len, self.lines[-1]}")
-
-    tohash = ("blob " + str(current_len) + "\x00") + "\n".join(buffer_cpy)
+    tohash = ("blob " + str(self.lines[-1]) + "\x00") + "\n".join(self.previous[:])
     sha = sha1()
     sha.update(tohash.encode())
     return sha.hexdigest()
@@ -35,9 +27,6 @@ class Text():
     end_line, end_col = self.lines.search(end)
     if start_line < 0:
       start_line = end_line
-    if self.lines[start_line] + start_col == self.lines[end_line]:
-      start_line += 1
-      start_col = 0
     return start_line, start_col, end_line, end_col
 
   def updateBuffer(self, buffer):
@@ -184,65 +173,43 @@ class Text():
       s = op['i']
       self._insert(buffer, p, s)
 
-    # add comment
-    if 'c' in op:
-      thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
-      self.threads[op['t']] = thread
-
   # inster string at given position
   def _insert(self, buffer, start, string):
-    p_linestart = 0
 
-    # find start line
-    # TODO replace with search
-    for line_i, line in enumerate(buffer):
-
-      # start is not yet there
-      if start >= p_linestart + len(line) + 1:
-        p_linestart += len(line) + 1
-      else:
-        break
-
+    line, col = self.lines.search(start)
     # convert format to array-style
-    string = string.split("\n")
+    addition = string.split("\n")
 
-    # append end of current line to last line of new line
-    string[-1] += line[(start - p_linestart):]
+    # Directly mutating addition allows us to cover since line and multiline
+    # case.
+    addition[-1] += buffer[line][col:]
+    start = buffer[line][:col] + addition[0]
 
-    # include string at start position
-    buffer[line_i] = line[:(start - p_linestart)] + string[0]
+    buffer[line] = start
+    self.lines[line] = len(start) + 1
 
-    # append rest to next line
-    if len(string) > 1:
-      buffer[line_i + 1:line_i + 1] = string[1:]
+    # Still valid for multiline, since slices will return empties
+    buffer[line + 1:line + 1] = addition[1:]
+    for l in addition[1:][::-1]:
+      self.lines.insert(line, len(l) + 1)
+    if line == self.lines.last_index:
+      self.lines[-1] -= 1
 
   # remove len chars from pos
   def _remove(self, buffer, start, string):
-    p_linestart = 0
 
-    # find start line
-    # TODO replace with search
-    for line_i, line in enumerate(buffer):
-
-      # start is not yet there
-      if start >= p_linestart + len(line) + 1:
-        p_linestart += len(line) + 1
-      else:
-        break
-
+    line, col = self.lines.search(start)
     # convert format to array-style
-    string = string.split("\n")
-    new_string = ""
+    removal = string.split("\n")
 
-    # remove first line from found position
-    new_string = line[:(start - p_linestart)]
+    end_col = col + len(removal[-1])
+    if len(removal) > 1:
+      end_col -= col
+    buffer[line] = buffer[line][:col] + buffer[line + len(removal) - 1][end_col:]
+    self.lines[line] = len(buffer[line]) + 1
 
-    # add rest of last line to new string
-    if len(string) == 1:
-      new_string += buffer[line_i + len(string) - 1][(start - p_linestart) +
-                                                     len(string[-1]):]
-    else:
-      new_string += buffer[line_i + len(string) - 1][len(string[-1]):]
-
-    # overwrite buffer
-    buffer[line_i:line_i + len(string)] = [new_string]
+    for l in removal[1:]:
+      del self.lines[line + 1]
+      del buffer[line + 1]
+    if line == self.lines.last_index:
+      self.lines[-1] -= 1

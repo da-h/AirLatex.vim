@@ -254,9 +254,11 @@ class Document(Buffer):
     comment_buffer.render(self.project, threads)
 
   def clearRemoteCursor(self, remote_id):
-    if remote_id in self.cursors:
-      highlight = self.cursors[remote_id]
-      self.buffer.api.clear_namespace(highlight, 0, -1)
+    @Task.Fn(remote_id, vim=True)
+    def clear_cursor(remote_id):
+      if remote_id in self.cursors:
+        highlight = self.cursors[remote_id]
+        self.buffer.api.clear_namespace(highlight, 0, -1)
 
   def updateRemoteCursor(self, cursor):
     # Don't draw the current cursor

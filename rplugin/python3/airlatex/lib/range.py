@@ -150,7 +150,7 @@ class NaiveAccumulator:
   def search(self, v):
     t = 0
     for i, c in enumerate(self.array):
-      if t + c >= v:
+      if t + c > v:
         return i, v - t
       t += c
     return -1, None
