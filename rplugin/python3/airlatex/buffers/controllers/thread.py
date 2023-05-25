@@ -1,5 +1,6 @@
 from intervaltree import Interval, IntervalTree
 
+
 class Threads():
 
   def __init__(self):
@@ -57,16 +58,13 @@ class Threads():
         if overlap == interval:
           continue
         overlapping_range = Interval(
-            max(interval.begin, overlap.begin),
-            min(interval.end, overlap.end))
+            max(interval.begin, overlap.begin), min(interval.end, overlap.end))
         # Redundant adds don't matter since set
         overlapping_ranges.add(overlapping_range)
     return overlapping_ranges
 
-
   def getPrevPosition(self, offset):
-    positions = self.threads[
-        offset + 1:] - self.threads[offset]
+    positions = self.threads[offset + 1:] - self.threads[offset]
     offset = len(self.threads[:]) - len(positions) + 1
     if not positions:
       positions = self.threads[:offset] - self.threads[offset]
@@ -76,8 +74,7 @@ class Threads():
     return min(positions).begin, offset
 
   def getNextPosition(self, offset):
-    positions = self.threads[:offset] - self.threads[
-        offset]
+    positions = self.threads[:offset] - self.threads[offset]
     offset = len(positions)
     if not positions:
       positions = self.threads[offset + 1:] - self.threads[offset]

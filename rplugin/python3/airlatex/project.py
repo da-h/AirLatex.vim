@@ -198,8 +198,7 @@ class AirLatexProject:
     await self.updateSidebar(waiting=False)
     self.log.debug(
         f" -> Waiting for server to accept changes to document {document.id}"
-        f"(ver {document.version})-> done"
-    )
+        f"(ver {document.version})-> done")
 
   # sendOps whenever events appear in queue
   # (is only called in constructor)
@@ -411,8 +410,8 @@ class AirLatexProject:
               if thread in self.pending_comments:
                 doc_id, count, content = self.pending_comments[thread]
                 Task(
-                    self.documents[doc_id].publishComment, thread,
-                    count, content).next
+                    self.documents[doc_id].publishComment, thread, count,
+                    content).next
                 continue
 
             self.comments = await self.getComments()
@@ -476,15 +475,11 @@ class AirLatexProject:
               # It's a comment!
               if 'c' in op:
                 del self.pending_comments[op['t']]
-                self.documents[id].threads[op['t']] = {
-                    "id": op['t'],
-                    "op": op
-                }
+                self.documents[id].threads[op['t']] = {"id": op['t'], "op": op}
                 contains_comments = True
             if contains_comments:
               self.comments = await self.getComments()
-              await self.documents[id].highlightComments(
-                  self.comments)
+              await self.documents[id].highlightComments(self.comments)
               await self.session.comments.triggerRefresh()
 
           elif cmd == "clientTracking.getConnectedUsers":

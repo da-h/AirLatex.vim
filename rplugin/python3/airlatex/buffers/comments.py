@@ -11,13 +11,10 @@ class Comments(PassiveMenuBuffer):
 
   def __init__(self, nvim):
     super().__init__(
-        nvim,
-        actions={
-          "Actions":{
-            "Resolve":[],
-            "Unresolve":[]
-          }
-      })
+        nvim, actions={"Actions": {
+            "Resolve": [],
+            "Unresolve": []
+        }})
     self.log.debug("Threads / Comments initialized.")
 
     self.project = None
@@ -151,9 +148,11 @@ class Comments(PassiveMenuBuffer):
       menu.add_block(headers=[user, short_date], content=content)
 
     if thread.get("resolved", False):
-      menu.add_entry(f" » reopen{' ' * (size - 4 - 7)}⬃⬃", menu.Item.Actions.Unresolve())
+      menu.add_entry(
+          f" » reopen{' ' * (size - 4 - 7)}⬃⬃", menu.Item.Actions.Unresolve())
     else:
-      menu.add_entry(f" » resolve{' ' * (size - 5 - 7)}✓✓", menu.Item.Actions.Resolve())
+      menu.add_entry(
+          f" » resolve{' ' * (size - 5 - 7)}✓✓", menu.Item.Actions.Resolve())
 
     self.write()
     if self.lock.locked():

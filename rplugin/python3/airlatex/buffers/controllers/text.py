@@ -6,6 +6,7 @@ from hashlib import sha1
 
 from copy import deepcopy
 
+
 class Text():
 
   def __init__(self):

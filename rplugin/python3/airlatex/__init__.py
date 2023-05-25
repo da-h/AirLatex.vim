@@ -73,7 +73,8 @@ class AirLatex():
 
   @pynvim.function('AirLatex_CommentSelection', sync=True)
   def commentSelection(self, args):
-    if (self.session.comments.creation or self.session.comments.drafting or self.session.comments.invalid):
+    if (self.session.comments.creation or self.session.comments.drafting or
+        self.session.comments.invalid):
       return
     start_line, start_col = self.nvim.call('getpos', "'<")[1:3]
     end_line, end_col = self.nvim.call('getpos', "'>")[1:3]
@@ -121,6 +122,7 @@ class AirLatex():
       message, = args
       while not message:
         message = self.nvim.funcs.input('Commit Message: ')
+
       @Task.Fn()
       async def _trySync():
         status, msg = await Document.allBuffers[buffer].project.syncGit(message)
@@ -197,6 +199,7 @@ class AirLatex():
     # Probs to session and Document
     async def get_joined_doc(project):
       await project.join_event.wait()
+
       def recurse(root, path):
         self.log.debug(f"{root}")
         for doc in root["docs"]:
@@ -205,6 +208,7 @@ class AirLatex():
             return path + [doc], doc, project
         for f in root["folders"]:
           return recurse(f, path + [f])
+
       for root in project.data["rootFolder"]:
         data = recurse(root, [root])
         if data:

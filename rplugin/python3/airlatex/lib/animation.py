@@ -10,7 +10,8 @@ class Animation(ABC):
   def __init__(self, name, callback, loop=0.1):
     self.name = name
     self.callback = callback
-    self.loop = PeriodicCallback(self._animate, 10000 * loop)  # default of 0.1 seconds
+    self.loop = PeriodicCallback(
+        self._animate, 10000 * loop)  # default of 0.1 seconds
     self.i = 0
 
   def __enter__(self):

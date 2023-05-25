@@ -31,6 +31,7 @@ def _args(result, args):
     return ()
   return result
 
+
 async def _untangle(callback):
   while (inspect.iscoroutine(callback) or
          inspect.iscoroutinefunction(callback)):
@@ -120,13 +121,14 @@ class Task():
 
   def _logWrapper(self, awaitable):
     trace = traceback.format_stack()
+
     async def wrap():
       try:
         return await awaitable
       except Exception as e:
         raise Exception("".join(trace)[:-1]) from e
-    return wrap()
 
+    return wrap()
 
   @staticmethod
   def Fn(*args, vim=False):

@@ -24,10 +24,7 @@ class Menu():
     self.title = title
     self.size = size
     self.previous = deepcopy(self.entries)
-    self.entries = [
-      (self.title.center(self.size).rstrip(), None),
-      ("", None)
-    ]
+    self.entries = [(self.title.center(self.size).rstrip(), None), ("", None)]
     self.entries_by_key = {}
     return self
 
@@ -128,4 +125,5 @@ def _make_menu_item(data: Dict[str, Union[List[str], Dict[str, List[str]]]]):
 
     menu_classes[name] = generateParentClass(name, list(root.keys()))
     return menu_classes[name]
+
   return build_class("Item", data)
