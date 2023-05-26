@@ -161,6 +161,12 @@ class Text():
     return ops
 
   def applyOp(self, buffer, op):
+    buffer_cpy = buffer[:]
+    current_len = 0
+    for i, row in enumerate(buffer_cpy):
+      current_len += len(row) + int(i + 1 < len(buffer_cpy))
+      getLogger("AirLatex").debug(f"Pre {current_len}, {self.lines[i + 1]}")
+
     # delete char and lines
     if 'd' in op:
       p = op['p']
@@ -172,6 +178,14 @@ class Text():
       p = op['p']
       s = op['i']
       self._insert(buffer, p, s)
+
+    buffer_cpy = buffer[:]
+    current_len = 0
+    for i, row in enumerate(buffer_cpy):
+      current_len += len(row) + int(i + 1 < len(buffer_cpy))
+      getLogger("AirLatex").debug(f"AirLatex {current_len}, {self.lines[i + 1]}")
+    if current_len != self.lines[i + 1]:
+      raise Exception(f"AirLatex {current_len}, {self.lines[i + 1]}")
 
   # inster string at given position
   def _insert(self, buffer, start, string):
@@ -191,7 +205,7 @@ class Text():
     # Still valid for multiline, since slices will return empties
     buffer[line + 1:line + 1] = addition[1:]
     for l in addition[1:][::-1]:
-      self.lines.insert(line, len(l) + 1)
+      self.lines.insert(line + 1, len(l) + 1)
     if line == self.lines.last_index:
       self.lines[-1] -= 1
 
