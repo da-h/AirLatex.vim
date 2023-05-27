@@ -1,4 +1,4 @@
-from airlatex import AirLatex, AirLatexSession
+# from airlatex import AirLatex, AirLatexSession
 # 
 # # for debugging, start nvim with
 # # NVIM_LISTEN_ADDRESS=/tmp/nvim nvim

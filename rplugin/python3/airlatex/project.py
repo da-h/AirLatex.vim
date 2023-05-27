@@ -177,7 +177,7 @@ class AirLatexProject:
     # notify server of local change
     self.log.debug(
         f"Sending {len(ops_buffer)} changes to document {document.id}"
-        f" (ver {document.version}]).")
+        f" (ver {document.version}, {content_hash}).")
     await self.send(
         "cmd", {
             "name": "applyOtUpdate",

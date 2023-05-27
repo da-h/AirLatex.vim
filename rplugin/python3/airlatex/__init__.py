@@ -22,7 +22,7 @@ class AirLatex():
     self.nvim.command("let g:AirLatexIsActive = 1")
     self.settings = Settings(
         wait_for=self.nvim.eval("g:AirLatexWebsocketTimeout"),
-        username=self.nvim.eval("g:AirLatexUsername"),
+        cookie=self.nvim.eval("g:AirLatexCookie"),
         domain=self.nvim.eval("g:AirLatexDomain"),
         https=self.nvim.eval("g:AirLatexUseHTTPS"),
         insecure=self.nvim.eval("g:AirLatexAllowInsecure") == 1)
@@ -230,7 +230,12 @@ class AirLatex():
     def set_cursor():
       row = min(cursor[0], len(self.nvim.current.buffer) - 1)
       column = min(cursor[1], len(self.nvim.current.buffer[row]) - 1)
-      self.nvim.current.window.cursor = [row, column]
+      # Sometime we're just unable to place the cursor correctly
+      try:
+        self.nvim.current.window.cursor = [row, column]
+      except:
+        self.nvim.current.window.cursor = [min(row, len(self.nvim.current.buffer)), 0]
+        self.log.debug(f"Cursor set failed {cursor}, {row, column}")
 
     # If the project is already connected, then just use the exisiting
     # connection to reconnect

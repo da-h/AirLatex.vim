@@ -12,6 +12,8 @@ from airlatex.buffers.buffer import Buffer
 from airlatex.buffers.controllers.text import Text
 from airlatex.buffers.controllers.thread import Threads
 
+import traceback
+
 if "allBuffers" not in globals():
   allBuffers = {}
 
@@ -309,6 +311,9 @@ class Document(Buffer):
     if not ops:
       return
 
+    for op in ops:
+      self.threads.applyOp(op, {})
+
     track = self.nvim.eval("g:AirLatexTrackChanges") == 1
     Task(self.project.sendOps(self.id, self.text.content_hash, ops, track))
 
@@ -333,14 +338,14 @@ class Document(Buffer):
         for op in ops:
           self.log.debug(f"the op {op} and {'c' in op}")
           self.text.applyOp(self.buffer, op)
-          # add comment
+          self.threads.applyOp(op, packet)
+          # add highlight comment
           if 'c' in op:
-            thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
-            self.threads.data[op['t']] = thread
             Task(self.highlightComments(comments))
 
         self.text.updateBuffer(self.buffer[:])
       except Exception as e:
-        self.log.debug(f"{op} failed: {e}")
+        self.log.debug(traceback.format_exc())
+        self.log.debug(f"{op} Failed: {e}")
       finally:
         self.lock.release()

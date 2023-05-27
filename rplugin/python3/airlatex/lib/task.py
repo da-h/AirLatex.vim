@@ -117,7 +117,7 @@ class Task():
     if not inspect.iscoroutine(fn):
       fn = fn(*args)
     # self.task = create_task(fn)
-    self.task = create_task(fn)
+    self.task = create_task(self._logWrapper(fn))
 
   def _logWrapper(self, awaitable):
     trace = traceback.format_stack()
@@ -151,14 +151,15 @@ class Task():
       result = future.result()
       task = self.channel.put(_args(result, args))
       # create_task(task)
-      create_task(task)
+      create_task(self._logWrapper(task))
+      # create_task(task)
 
     return enqueue
 
   def _build_callback(self, fn):
 
     async def callback():
-      result = await self.channel.get()
+      result = await self._logWrapper(self.channel.get())
       return await _call(fn, result)
 
     return callback
@@ -185,7 +186,7 @@ class Task():
   def next(self):
     # Syntaxic sugar for resolving a returned future.
     async def wait(callback):
-      response = await _untangle(callback)
+      response = await self._logWrapper(_untangle(callback))
       return response
 
     return self.then(wait)

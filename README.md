@@ -1,73 +1,93 @@
-AirLatex.vim
-============
-**Current State**: Work in Progress  
-(Please use it right now only for testing purposes.)
+# AirLatex.vim
+
+**Current State**: Use at your own risk.
+What's the worst that can happen?
+Something breaks and automatically clears the buffer. You can easily recover
+this with the version history in overleaf, but it's still a pain, and might
+mess up your comment positions. This has only happened to me once when actively
+developing this plugin, but it's worth noting here.
+
+As is, this is customized to my workflow- with no added hooks for broader
+customization. If you'd like to add some, please create a PR- this is a won't fix for me.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/da-h/AirLatex.vim/master/screenshot.png">
 </p>
 
-Features
-========
-**That's possible already**:
-- open documents and **write remotely**
-- **cursor positions** are sent to the server
-- list all projects
-- custom servers
 
-**Not implemented, yet**:  
-This project is just at its dawn, however I plan to also implement the following features in the future:
-- show colored **cursor positions of other users**
-- send **recompile**-command to the server
-- **file operations** inside vim (new file/copy/delete)
-- **review mode** (comments, track changes, ...)
+## First Use
 
+This plugin is a bit paternalistic in its approach, since debugging multiple
+login methods is not sustainable. See the [original AirLatex]() for a login
+workflow.
 
+### Authenticating
+You should not have to reauthenticate once you have authenticated and leave the
+session. Both of these methods are relatively persistent.
 
-Installation / First Use
-========================
-**Notes regarding Vim 8 support**: Vim 8 will be supported in the future, however i could not make it work completely, yet. If you need this feature feel free to contribute. (See `vim8` branch for current state.) ;)
+#### Go H$%^k yourself
+To get started, login into your OverLeaf/ShareLatex instance in Firefox.
+Firefox does not locally encrypt cookies, and AirLatex will [Cookie
+Jack](https://owasp.org/www-community/attacks/Session_hijacking_attack) the
+session cookie to connect to the server. It's a little like hacking yourself,
+and a nice reminder that any program you are run on your machine can do this
+and more. Here's [the relevant code]() if you are interested.
 
+Once you are logged in, set `g:AirLatexCookieDB` to the path to the cookie database.
+If you are lazy, just try:
+```
+let g:AirLatexCookieDB="~/.mozilla/firefox/*.default/cookies.sqlite"
+```
+
+For a custom or enterprise solution, you'll have to play with additional settings:
+ - g:AirLatexCookieKey
+ - g:AirLatexDomain
+
+**You will need sqlite for this**
+
+#### Set the cookie yourself
+Log into to your instance, and take a look at your cookies.
+You can explicitly set the Cookie with
+```
+let g:AirLatexCookie="cookies:overleaf2_session=justanexamplestring;maybe_morecookies=1"
+```
+
+For details on how to check your cookies [look at this issue]().
+
+### Installing
+#### With Nix
+```
+nix run github:dmadisetti/airlatex.vim#
+```
+Or add to your flake or what not. If you use nix, you know the drill.
+
+### Normal Installation
 1. Install the requirements. (python3)
     ```
-    pip3 install keyring tornado requests pynvim
+    pip3 install tornado requests pynvim intervaltree beautifulsoup4
     ```
 2. Install the Vim Plugin itself
     Using **Vim Plug**:
     ```
-	Plug 'da-h/AirLatex.vim', {'do': ':UpdateRemotePlugins'}
-    " your login-name
-    let g:AirLatexUsername="name@email.com"
-
-    " optional: set server name
-    let g:AirLatexDomain="www.overleaf.com"
+	  Plug 'dmadisetti/AirLatex.vim', {'do': ':UpdateRemotePlugins'}
+    " Auth and settings mentioned in the documentation.
     ```
     
     Using **Vundle**:
     ```
-	Plugin 'da-h/AirLatex.vim'
-    " your login-name
-    let g:AirLatexUsername="name@email.com"
-
-    " optional: set server name
-    let g:AirLatexDomain="www.overleaf.com"
+	  Plugin 'dmadisetti/AirLatex.vim'
+    " Auth and settings mentioned in the documentation.
     ```
     After installation using `:PluginInstall` run `:UpdateRemotePlugins` to register the python plugin.
-3. For the login, this plugin uses [keyring](https://pypi.org/project/keyring/) to store credentials by default.  
-    On your first login, AirLatex will ask for your password. The credentials will be saved in your keyring. AirLatex does **not** manage credentials for security reasons.
 
-    **If your overleaf/sharelatex instance uses a more complicated login process, set your username to "cookies"**.  
-    In that case, AirLatex will ask you for the session cookies (that unfortunately needs to be lookuped-up by hand in your browser) and paste it into the promt.  
-    Alternatively, assuming your session cookie is YOURSESSIONCOOKIE, you can circumvent the login prompt by setting the username to "cookies:YOURSESSIONCOOKIE".  
-    **If you have any Idea how to improve this process, feel free to contribute or raise an issue**.
-4. Open AirLatex in Vim with `:AirLatex`
+### Launching
+Open AirLatex in Vim with `:AirLatex`
 Feel free to map AirLatex to a binding of your liking, e.g.:
    ```
    nmap <leader>a :AirLatex<CR>
    ```
 
-Settings
-========
+## Settings
 
 Variable | Possible Values | Description
 -------- | --------------- | -----------
@@ -80,15 +100,50 @@ Variable | Possible Values | Description
 `g:AirLatexAllowInsecure` | `0` (default, off), `1` (on) | Allow insecure connection. For example, if the server is self hosted and/or the certificate is self-signed
 `g:AirLatexTrackChanges` | `0` (default, off), `1` (on) | Allow track changes to be sent.
 
+## Bindings
 
-Troubleshooting
-===============
+The Following bindings are scoped to the buffers. If you'd like to customize
+them, please create a PR.
+
+Buffer | Binding | Description
+-------- | --------------- | -----------
+sidebar | `q` | Close buffer
+sidebar | `enter` | Enter project/ Toggle folder
+sidebar | `d`, `D` | Leave project
+document | visual `gv` | Mark section for drafting a comment
+document | `R` | Refresh document, or bring back online if connection dropped.
+document | command `:w` | If project is synced with github, create a new commit.
+comments | `<C-n>` | Next comment (for stacked comments)
+comments | `<C-p>` | Prev comment (for stacked comments)
+comments | `ZZ` | Submit comment in draft
+comments | `ZQ` | Quit Buffer/ discard draft
+comments | (insert) | Start drafting a response if on thread
+comments | `enter` | Un/resolve project if over the relevant option.
+
+
+### Recommended Bindings
+
+Additional bindings that are nice to have, but not required for functionality.
+
+```vim
+" AirLatex Keybinds
+if exists("g:AirLatexIsActive") && g:AirLatexIsActive
+  nnoremap <space>n :call AirLatex_NextCommentPosition()<CR>
+  nnoremap <space>p :call AirLatex_PrevCommentPosition()<CR>
+  nnoremap <F2> :call AirLatexToggleTracking()<CR>
+  nnoremap <C-x> :call AirLatexToggle()<CR>
+  nnoremap X :call AirLatexToggleComments()<CR>
+endif
+```
+
+## Troubleshooting
+
 **If you find a bug.**  
 Feel free to open an issue!
-To make things a bit easier for me, please use AirLatex' debug mode (`leg g:AirLatexLogLevel='DEBUG'`).
+To make things a bit easier for me, please use AirLatex' debug mode (`let g:AirLatexLogLevel='DEBUG'`).
 
 
-Credits
-=======
+## Credits
+
 This plugin is a complete rework of [Vim-ShareLaTeX-Plugin](https://www.github.com/thomashn/Vim-ShareLaTeX-Plugin).  
 I took all the good ideas and added even more vim love. ❥ ;)

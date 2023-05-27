@@ -1,5 +1,6 @@
 from intervaltree import Interval, IntervalTree
 
+from logging import getLogger
 
 class Threads():
 
@@ -63,6 +64,7 @@ class Threads():
         overlapping_ranges.add(overlapping_range)
     return overlapping_ranges
 
+
   def getNextPosition(self, offset):
     positions = self.threads[offset + 1:] - self.threads[offset]
     count = len(self.threads[:]) - len(positions) + 1
@@ -82,3 +84,64 @@ class Threads():
     if not positions:
       return (-1, -1), 0
     return max(positions).begin, count
+
+
+  def applyOp(self, op, packet):
+
+    # delete char and lines
+    if 'd' in op:
+      p = op['p']
+      s = op['d']
+      self._remove(p, p + len(s))
+
+    # add characters and newlines
+    if 'i' in op:
+      p = op['p']
+      s = op['i']
+      self._insert(p, p + len(s))
+
+    # add comment
+    if 'c' in op:
+      thread = {"id": op['t'], "metadata": packet["meta"], "op": op}
+      self.data[op['t']] = thread
+
+  def _remove(self, start, end):
+    overlap = set({})
+    delta = end - start
+    for interval in self.threads[start:end + 1]:
+      self.threads.remove(interval)
+      begin = interval.begin + min(start - interval.begin, 0)
+      # end = (interval.end -
+      #        min(end, interval.end) +
+      #        max(start, interval.begin) +
+      #        min(start - interval.begin, 0))
+      if end >= interval.end:
+        stop = start
+      else:
+        stop = interval.end - delta
+      if begin >= stop:
+        stop = begin + 1
+      interval = Interval(begin, stop, interval.data)
+      overlap.add(interval)
+    for interval in self.threads[end + 1:]:
+      self.threads.remove(interval)
+      self.threads.add(Interval(interval.begin - delta,
+                                interval.end - delta,
+                                interval.data))
+    for o in overlap:
+      self.threads.add(o)
+
+  def _insert(self, start, end):
+    overlap = set({})
+    delta = end - start
+    for interval in self.threads[start]:
+        self.threads.remove(interval)
+        end = interval.end + delta
+        interval = Interval(interval.begin, end, interval.data)
+        overlap.add(interval)
+    for interval in self.threads[start + 1:]:
+        self.threads.remove(interval)
+        self.threads.add(Interval(interval.begin + delta, interval.end + delta, interval.data))
+
+    for o in overlap:
+      self.threads.add(o)

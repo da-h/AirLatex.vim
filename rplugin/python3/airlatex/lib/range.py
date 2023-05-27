@@ -153,10 +153,17 @@ class NaiveAccumulator:
       if t + c > v:
         return i, v - t
       t += c
-    return -1, None
+    return self.last_index, 0
 
   def position(self, row, col):
     return self[row] + col
+
+  def update(self, index, diff):
+    if index > self.last_index:
+      self.array.append(diff)
+      self.last_index += 1
+    else:
+      self.array[index] += diff
 
   def __getitem__(self, index):
     return self.get_cumulative_value(index)

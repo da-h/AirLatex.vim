@@ -12,9 +12,9 @@ class Settings:
     return cls._instance
 
   def initialize(
-      self, wait_for=0, username="", domain="", https=True, insecure=False):
+      self, wait_for=0, cookie="", domain="", https=True, insecure=False):
     self.wait_for = wait_for
-    self.username = username
+    self.cookie = cookie
     self.domain = domain
     self.https = https
     self.insecure = insecure

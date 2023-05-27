@@ -1,12 +1,10 @@
 from airlatex.lib.range import FenwickTree, NaiveAccumulator
-from airlatex.lib.task import AsyncDecorator, Task
 
 from difflib import SequenceMatcher
 from hashlib import sha1
 
 from copy import deepcopy
 
-from logging import getLogger
 
 class Text():
 
@@ -17,7 +15,7 @@ class Text():
   @property
   def content_hash(self):
     # compute sha1-hash of current buffer
-    tohash = ("blob " + str(self.lines[-1]) + "\x00") + "\n".join(self.previous[:])
+    tohash = f"blob {self.lines[-1]}" + "\x00" + "\n".join(self.previous[:])
     sha = sha1()
     sha.update(tohash.encode())
     return sha.hexdigest()
@@ -63,7 +61,6 @@ class Text():
           skip = False
           break
       if skip:
-        # self.log.debug("writeBuffer: -> done (hashtest says nothing to do)")
         return []
 
     # cumulative position of line
@@ -73,24 +70,24 @@ class Text():
     ops = []
     S = SequenceMatcher(
         None, self.previous, buffer, autojunk=False).get_opcodes()
+
     for op in S:
       if op[0] == "equal":
         continue
 
       # inserting a whole row
       elif op[0] == "insert":
-        # self.log.debug(f"Insert")
         selection = buffer[op[3]:op[4]]
         s = "\n".join(selection)
-        for l in selection[::-1]:
-          if op[3] == self.lines.last_index:
-            if op[3]:
-              self.lines[op[3] - 1] += 1
-            self.lines.insert(op[3], len(l))
+        for i, l in enumerate(selection[::-1]):
+          if i + op[3] == self.lines.last_index:
+            if op[4]:
+              self.lines.update(op[4] - 1, 1)
+            self.lines.insert(op[4], len(l))
           else:
             self.lines.insert(op[3], len(l) + 1)
         if op[1] >= len(self.previous):
-          p = pos[-1] - 1
+          p = pos[-1]
           s = "\n" + s
         else:
           p = pos[op[1]]
@@ -99,13 +96,12 @@ class Text():
 
       # deleting a whole row
       elif op[0] == "delete":
-        # self.log.debug(f"Delete")
         s = "\n".join(self.previous[op[1]:op[2]])
         for i in range(op[1], op[2]):
           del self.lines[op[3]]
           # If last line previous line needs to remove new line char
           if op[3] and op[3] == self.lines.last_index:
-            self.lines[op[3] - 1] -= 1
+            self.lines.update(op[3] - 1, -1)
         if op[1] == len(buffer):
           p = pos[-(op[2] - op[1]) - 1] - 1
           s = "\n" + s
@@ -116,18 +112,22 @@ class Text():
 
       # for replace, check in more detail what has changed
       elif op[0] == "replace":
-        # self.log.debug(f"replace")
         old = "\n".join(self.previous[op[1]:op[2]])
         selection = buffer[op[3]:op[4]]
         new = "\n".join(selection)
         # Since Sequence Matcher works in order, we need to use the indices on
         # the buffer.
+
+        # Handle insertions
+        for _ in range(op[2] - op[1], op[4] - op[3]):
+          # Inset 0 since we are about to overwrite with selection anyway.
+          self.lines.insert(op[3] + (op[2] - op[1]) - 1, 0)
         for i, s in zip(range(op[3], op[4]), selection):
           # Account for new lines at end of document
-          if i == self.lines.last_index:
-            self.lines[i] = len(s)
-          else:
-            self.lines[i] = len(s) + 1
+          self.lines[i] = len(s) + int(i + 1 < self.lines.last_index)
+        # Handle deletion
+        for _ in range(op[4] - op[3], op[2] - op[1]):
+          del self.lines[op[4]]
 
         S2 = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
         for op2 in S2:
@@ -149,8 +149,6 @@ class Text():
 
     # nothing to do
     if len(ops) == 0:
-      # self.log.debug(
-      #     "writeBuffer: -> done (sequencematcher says nothing to do)")
       return []
 
     # update saved buffer & send command
@@ -161,11 +159,6 @@ class Text():
     return ops
 
   def applyOp(self, buffer, op):
-    buffer_cpy = buffer[:]
-    current_len = 0
-    for i, row in enumerate(buffer_cpy):
-      current_len += len(row) + int(i + 1 < len(buffer_cpy))
-      getLogger("AirLatex").debug(f"Pre {current_len}, {self.lines[i + 1]}")
 
     # delete char and lines
     if 'd' in op:
@@ -179,14 +172,6 @@ class Text():
       s = op['i']
       self._insert(buffer, p, s)
 
-    buffer_cpy = buffer[:]
-    current_len = 0
-    for i, row in enumerate(buffer_cpy):
-      current_len += len(row) + int(i + 1 < len(buffer_cpy))
-      getLogger("AirLatex").debug(f"AirLatex {current_len}, {self.lines[i + 1]}")
-    if current_len != self.lines[i + 1]:
-      raise Exception(f"AirLatex {current_len}, {self.lines[i + 1]}")
-
   # inster string at given position
   def _insert(self, buffer, start, string):
 
@@ -196,6 +181,9 @@ class Text():
 
     # Directly mutating addition allows us to cover since line and multiline
     # case.
+    last = line == len(buffer)
+    if last:
+      buffer.append("")
     addition[-1] += buffer[line][col:]
     start = buffer[line][:col] + addition[0]
 
@@ -206,8 +194,8 @@ class Text():
     buffer[line + 1:line + 1] = addition[1:]
     for l in addition[1:][::-1]:
       self.lines.insert(line + 1, len(l) + 1)
-    if line == self.lines.last_index:
-      self.lines[-1] -= 1
+    if last:
+      self.lines.update(-1, -1)
 
   # remove len chars from pos
   def _remove(self, buffer, start, string):
@@ -226,4 +214,4 @@ class Text():
       del self.lines[line + 1]
       del buffer[line + 1]
     if line == self.lines.last_index:
-      self.lines[-1] -= 1
+      self.lines.update(-1, -1)

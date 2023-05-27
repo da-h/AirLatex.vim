@@ -64,7 +64,7 @@ if !exists("g:AirLatexTrackChanges")
     let g:AirLatexTrackChanges=0
 endif
 
-if !exists("g:AirLatexUsername") && exists("g:AirLatexCookieDB")
+if !exists("g:AirLatexCookie") && exists("g:AirLatexCookieDB")
     let AirLatexSecret = trim(system(
     \   "sqlite3 'file:"
     \   . glob(g:AirLatexCookieDB)
@@ -74,7 +74,7 @@ if !exists("g:AirLatexUsername") && exists("g:AirLatexCookieDB")
     \   . matchstr(g:AirLatexDomain, '\zs\..*')
     \   . "\";'"
     \))
-    let g:AirLatexUsername = "cookies:" . g:AirLatexCookieKey . "=" . AirLatexSecret
+    let g:AirLatexCookie = "cookies:" . g:AirLatexCookieKey . "=" . AirLatexSecret
 endif
 
 if exists('*airline#parts#define_function')

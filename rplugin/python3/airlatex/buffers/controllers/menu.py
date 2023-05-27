@@ -33,6 +33,10 @@ class Menu():
       self.entries_by_key[key] = len(self.entries)
     self.entries.append(((" " * indent) + line, action))
 
+  def add_blob(self, blob, action=None, key=None, indent=0):
+    for line in blob.split("\n"):
+      self.add_entry(line, action=action, key=key, indent=indent)
+
   def add_bulk(self, *lines):
     for line in lines:
       self.add_entry(*line)

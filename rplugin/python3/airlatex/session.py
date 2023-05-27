@@ -3,7 +3,7 @@ import requests
 import json
 
 from airlatex.project import AirLatexProject
-from airlatex.buffers import Sidebar, Comments
+from airlatex.buffers import Sidebar, Comments, Splash
 
 from airlatex.lib.task import Task
 from airlatex.lib.connection import WebPage
@@ -26,6 +26,7 @@ class AirLatexSession:
     self.project_data = {}
     self.authenticated = False
 
+    Splash(nvim)
     ## Build the buffers
     # initialize sidebar
     self.sidebar = Sidebar(nvim, self)
@@ -69,7 +70,7 @@ class AirLatexSession:
       return True
 
     # copy cookies to httpHandler
-    for c in self.settings.username.replace("cookies:", "", 1).split(";"):
+    for c in self.settings.cookie.replace("cookies:", "", 1).split(";"):
       if "=" not in c:
         raise ValueError("Cookie has no value. Found: %s" % c)
       name, value = c.split("=", 1)
